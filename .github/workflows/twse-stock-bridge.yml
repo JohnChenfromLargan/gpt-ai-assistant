@@ -20,6 +20,7 @@ concurrency:
 jobs:
   validate:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -32,12 +33,12 @@ jobs:
       - name: Self test
         run: python stock_bridge/bridge.py --self-test
 
+      # Intentionally run the real TWSE build on pull_request as an integration test.
+      # PR runs never commit generated data; only main schedule/dispatch runs may commit.
       - name: Build latest market data
-        if: github.event_name != 'pull_request'
         run: python stock_bridge/bridge.py
 
       - name: Validate generated JSON
-        if: github.event_name != 'pull_request'
         run: |
           python - <<'PY'
           import json
@@ -47,7 +48,13 @@ jobs:
           assert data['schema_version'] == '1.0'
           assert set(data['quotes']) == {'2002', '3019'}
           assert set(data['history']) == {'2002', '3019'}
+          assert data['generated_at'] is not None
           print('JSON_VALIDATION_PASS')
+          print('bridge=', data.get('bridge'))
+          print('quote_2002=', data['quotes']['2002'].get('status'))
+          print('quote_3019=', data['quotes']['3019'].get('status'))
+          print('history_2002_count=', data['history']['2002'].get('count'))
+          print('history_3019_count=', data['history']['3019'].get('count'))
           PY
 
       - name: Commit refreshed data
