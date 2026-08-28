@@ -15,7 +15,7 @@ permissions:
 
 concurrency:
   group: twse-stock-bridge
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   validate:
