@@ -1,0 +1,40 @@
+{
+  "schema_version": "1.0",
+  "generated_at": null,
+  "market_date": null,
+  "source": {
+    "primary": "TWSE"
+  },
+  "bridge": {
+    "transport_ready": false,
+    "analysis_ready": false,
+    "phase": "MVP_DATA_BRIDGE",
+    "note": "Placeholder. GitHub Actions will replace this after the first successful production run."
+  },
+  "quotes": {
+    "2002": {
+      "status": "NOT_RUN",
+      "name": "中鋼"
+    },
+    "3019": {
+      "status": "NOT_RUN",
+      "name": "亞光"
+    }
+  },
+  "history": {
+    "2002": {
+      "count": 0,
+      "history_gate": "FAIL",
+      "long_term_750_ready": false,
+      "price_adjustment_status": "PENDING_PHASE_2",
+      "analysis_ready": false
+    },
+    "3019": {
+      "count": 0,
+      "history_gate": "FAIL",
+      "long_term_750_ready": false,
+      "price_adjustment_status": "PENDING_PHASE_2",
+      "analysis_ready": false
+    }
+  }
+}

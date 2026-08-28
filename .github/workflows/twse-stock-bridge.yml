@@ -1,0 +1,117 @@
+name: TWSE Stock Bridge
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - 'stock_bridge/bridge.py'
+      - 'stock_bridge/phase2.py'
+      - 'stock_bridge/phase2_fixed.py'
+      - 'stock_bridge/README.md'
+      - '.github/workflows/twse-stock-bridge.yml'
+  pull_request:
+    paths:
+      - 'stock_bridge/**'
+      - '.github/workflows/twse-stock-bridge.yml'
+  schedule:
+    # GitHub cron is UTC. These correspond to 09:20, 10:20, 11:20 Asia/Taipei.
+    - cron: '20 1,2,3 * * 1-5'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: twse-stock-bridge
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Self tests
+        run: |
+          python stock_bridge/bridge.py --self-test
+          python stock_bridge/phase2_fixed.py --self-test
+
+      - name: Corporate action source smoke
+        run: |
+          python - <<'PY'
+          import json, urllib.request
+          url = 'https://www.twse.com.tw/rwd/zh/exRight/TWT49U?startDate=20260724&endDate=20260724&response=json'
+          req = urllib.request.Request(url, headers={'User-Agent':'Mozilla/5.0','Accept':'application/json,text/plain,*/*'})
+          with urllib.request.urlopen(req, timeout=30) as resp:
+              data = json.loads(resp.read().decode('utf-8-sig'))
+          print('stat=', data.get('stat'))
+          fields = data.get('fields') or []
+          rows = data.get('data') or []
+          code_idx = fields.index('股票代號') if '股票代號' in fields else None
+          hits = [r for r in rows if code_idx is not None and str(r[code_idx]).strip() == '2002']
+          assert hits, 'TWSE corporate-action smoke failed: 2002 not found on official 2026-07-24 ex-dividend date'
+          print('CORPORATE_ACTION_SOURCE_SMOKE_PASS')
+          PY
+
+      - name: Build Phase 1 market data
+        run: python stock_bridge/bridge.py
+
+      - name: Build Phase 2 analytics
+        run: python stock_bridge/phase2_fixed.py
+
+      - name: Validate generated JSON and analytics gates
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p = Path('stock_bridge/latest.json')
+          data = json.loads(p.read_text(encoding='utf-8'))
+          assert data['schema_version'] == '2.0'
+          assert set(data['quotes']) == {'2002', '3019'}
+          assert set(data['history']) == {'2002', '3019'}
+          assert set(data['analytics']) == {'2002', '3019'}
+          assert data['generated_at'] is not None
+          assert data['bridge']['transport_ready'] is True
+          assert data['bridge']['analysis_ready'] is True
+          for symbol in ('2002', '3019'):
+              h = data['history'][symbol]
+              a = data['analytics'][symbol]
+              assert h['count'] >= 750
+              assert h['history_gate'] == 'PASS'
+              assert h['long_term_750_ready'] is True
+              assert a['analysis_ready'] is True
+              assert a['corporate_actions']['status'] == 'PASS'
+              assert a['corporate_actions']['fetch_error_count'] == 0
+              t = a['technical_completed_day']
+              for key in ('ma20','ma60','ma120','ma240','rsi14','macd','macd_signal','atr14'):
+                  assert t[key] is not None, (symbol, key)
+              assert a['horizon_statistics']['240']['samples'] > 0
+          events_2002 = data['analytics']['2002']['corporate_actions']['events']
+          assert any(e['date'] == '2026-07-24' and e['kind'] == 'EX_RIGHT_DIVIDEND' for e in events_2002)
+          print('PHASE2_JSON_VALIDATION_PASS')
+          print('bridge=', data.get('bridge'))
+          print('quotes=', {k: v.get('status') for k,v in data['quotes'].items()})
+          print('history_counts=', {k: v.get('count') for k,v in data['history'].items()})
+          print('corporate_actions=', {k: v['corporate_actions']['event_count'] for k,v in data['analytics'].items()})
+          PY
+
+      - name: Commit refreshed data
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add stock_bridge/latest.json stock_bridge/history/*.json
+          if git diff --cached --quiet; then
+            echo 'No generated changes to commit.'
+            exit 0
+          fi
+          git commit -m 'data: refresh TWSE stock bridge'
+          git push
