@@ -4,10 +4,28 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import urllib.parse
 from datetime import date, timedelta
 
 import phase2 as p
+
+
+def robust_roc_date_to_iso(value: str) -> str:
+    """Parse TWSE ROC/Gregorian dates, including forms like 115年07月24日."""
+    s = str(value).strip()
+    m = re.fullmatch(r"(\d{2,3})年(\d{1,2})月(\d{1,2})日", s)
+    if m:
+        y, mo, d = map(int, m.groups())
+        return f"{y + 1911:04d}-{mo:02d}-{d:02d}"
+    if "/" in s:
+        y, mo, d = map(int, s.split("/"))
+        return f"{y + 1911:04d}-{mo:02d}-{d:02d}"
+    if len(s) == 7 and s.isdigit():
+        return f"{int(s[:3]) + 1911:04d}-{s[3:5]}-{s[5:7]}"
+    if len(s) == 8 and s.isdigit():
+        return f"{s[:4]}-{s[4:6]}-{s[6:8]}"
+    raise ValueError(f"unsupported TWSE date: {value}")
 
 
 def short_ranges(start: str, end: str, days: int = 31):
@@ -23,7 +41,6 @@ def short_ranges(start: str, end: str, days: int = 31):
 def corrected_fetch_corporate_actions(symbol: str, start: str, end: str):
     actions = []
     errors = []
-    # Use the current RWD endpoint first, with the legacy exchangeReport endpoint as fallback.
     endpoint_families = {
         "EX_RIGHT_DIVIDEND": [
             ("https://www.twse.com.tw/rwd/zh/exRight/TWT49U", "startDate", "endDate"),
@@ -59,7 +76,6 @@ def corrected_fetch_corporate_actions(symbol: str, start: str, end: str):
                             "market_rows": len(rows) if isinstance(rows, list) else None,
                             "fields": fields[:6] if isinstance(fields, list) else None,
                         })
-                    # A normal no-data response is still a successful source access.
                     if isinstance(payload, dict) and isinstance(fields, list) and isinstance(rows, list):
                         if rows and not fields:
                             last_problem = f"{kind}:{d1}-{d2}:rows_without_fields:{base}"
@@ -91,7 +107,8 @@ def corrected_fetch_corporate_actions(symbol: str, start: str, end: str):
 
 
 def run():
-    original = p.fetch_corporate_actions
+    original_fetch = p.fetch_corporate_actions
+    original_date_parser = p.roc_date_to_iso
     diagnostics_by_symbol = {}
 
     def adapter(symbol, start, end):
@@ -100,15 +117,16 @@ def run():
         return actions, errors
 
     p.fetch_corporate_actions = adapter
+    p.roc_date_to_iso = robust_roc_date_to_iso
     try:
         data = p.run_phase2()
     finally:
-        p.fetch_corporate_actions = original
+        p.fetch_corporate_actions = original_fetch
+        p.roc_date_to_iso = original_date_parser
 
     for symbol, diag in diagnostics_by_symbol.items():
         data["analytics"][symbol]["corporate_actions"]["source_diagnostics"] = diag
 
-    # Regression sentinel: official TWSE data contains 2002 ex-dividend on 2026-07-24.
     history_2002 = p.load_history("2002")
     if history_2002 and history_2002[0]["date"] <= "2026-07-24" <= history_2002[-1]["date"]:
         events = data["analytics"]["2002"]["corporate_actions"]["events"]
@@ -131,7 +149,9 @@ def run():
 
 def self_test():
     p.self_test()
-    ranges = list(short_ranges("20260701", "20260815"))
+    assert robust_roc_date_to_iso("115年07月24日") == "2026-07-24"
+    assert robust_roc_date_to_iso("115/07/24") == "2026-07-24"
+    ranges = list(short_ranges("2026-07-01", "2026-08-15"))
     assert ranges[0] == ("20260701", "20260731")
     assert ranges[1] == ("20260801", "20260815")
     q = urllib.parse.urlencode({"response": "json", "startDate": "20260724", "endDate": "20260724"})
