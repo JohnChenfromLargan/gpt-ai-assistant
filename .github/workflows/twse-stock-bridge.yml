@@ -52,7 +52,6 @@ jobs:
           req = urllib.request.Request(url, headers={'User-Agent':'Mozilla/5.0','Accept':'application/json,text/plain,*/*'})
           with urllib.request.urlopen(req, timeout=30) as resp:
               data = json.loads(resp.read().decode('utf-8-sig'))
-          print('stat=', data.get('stat'))
           fields = data.get('fields') or []
           rows = data.get('data') or []
           code_idx = fields.index('股票代號') if '股票代號' in fields else None
@@ -79,7 +78,12 @@ jobs:
           assert set(data['history']) == {'2002', '3019'}
           assert set(data['analytics']) == {'2002', '3019'}
           assert data['generated_at'] is not None
-          assert data['bridge']['transport_ready'] is True
+          # Quote availability is live market state, not a CI correctness condition.
+          # Publish explicit PASS/FAIL quote status and let the ChatGPT quote Gate decide.
+          assert isinstance(data['bridge']['transport_ready'], bool)
+          allowed_quote = {'PASS', 'FAIL_STALE_TRADE', 'FAIL_NO_RECENT_TRADE', 'FAIL_NETWORK'}
+          for symbol in ('2002', '3019'):
+              assert data['quotes'][symbol].get('status') in allowed_quote
           assert data['bridge']['analysis_ready'] is True
           for symbol in ('2002', '3019'):
               h = data['history'][symbol]
@@ -87,9 +91,12 @@ jobs:
               assert h['count'] >= 750
               assert h['history_gate'] == 'PASS'
               assert h['long_term_750_ready'] is True
+              assert h['price_adjustment_status'] == 'PASS'
+              assert h['integrity_error_count'] == 0
               assert a['analysis_ready'] is True
               assert a['corporate_actions']['status'] == 'PASS'
               assert a['corporate_actions']['fetch_error_count'] == 0
+              assert not a['corporate_actions']['unresolved_discontinuities']
               t = a['technical_completed_day']
               for key in ('ma20','ma60','ma120','ma240','rsi14','macd','macd_signal','atr14'):
                   assert t[key] is not None, (symbol, key)
