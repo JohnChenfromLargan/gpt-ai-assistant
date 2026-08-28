@@ -35,6 +35,26 @@ jobs:
           python stock_bridge/bridge.py --self-test
           python stock_bridge/phase2_fixed.py --self-test
 
+      - name: Corporate action source smoke
+        run: |
+          python - <<'PY'
+          import json, urllib.request
+          url = 'https://www.twse.com.tw/rwd/zh/exRight/TWT49U?startDate=20260724&endDate=20260724&response=json'
+          req = urllib.request.Request(url, headers={'User-Agent':'Mozilla/5.0','Accept':'application/json,text/plain,*/*'})
+          with urllib.request.urlopen(req, timeout=30) as resp:
+              data = json.loads(resp.read().decode('utf-8-sig'))
+          print('stat=', data.get('stat'))
+          print('fields=', data.get('fields'))
+          rows = data.get('data') or []
+          print('row_count=', len(rows))
+          fields = data.get('fields') or []
+          code_idx = fields.index('股票代號') if '股票代號' in fields else None
+          hits = [r for r in rows if code_idx is not None and str(r[code_idx]).strip() == '2002']
+          print('2002_hits=', hits)
+          assert hits, 'TWSE corporate-action smoke failed: 2002 not found on official 2026-07-24 ex-dividend date'
+          print('CORPORATE_ACTION_SOURCE_SMOKE_PASS')
+          PY
+
       - name: Build Phase 1 market data
         run: python stock_bridge/bridge.py
 
