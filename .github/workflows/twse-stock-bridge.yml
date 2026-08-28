@@ -20,7 +20,7 @@ concurrency:
 jobs:
   validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -30,31 +30,49 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Self test
-        run: python stock_bridge/bridge.py --self-test
+      - name: Self tests
+        run: |
+          python stock_bridge/bridge.py --self-test
+          python stock_bridge/phase2.py --self-test
 
-      # Intentionally run the real TWSE build on pull_request as an integration test.
-      # PR runs never commit generated data; only main schedule/dispatch runs may commit.
-      - name: Build latest market data
+      # Run the real TWSE integration on PRs too. PR runs never commit generated data.
+      - name: Build Phase 1 market data
         run: python stock_bridge/bridge.py
 
-      - name: Validate generated JSON
+      - name: Build Phase 2 analytics
+        run: python stock_bridge/phase2.py
+
+      - name: Validate generated JSON and analytics gates
         run: |
           python - <<'PY'
           import json
           from pathlib import Path
           p = Path('stock_bridge/latest.json')
           data = json.loads(p.read_text(encoding='utf-8'))
-          assert data['schema_version'] == '1.0'
+          assert data['schema_version'] == '2.0'
           assert set(data['quotes']) == {'2002', '3019'}
           assert set(data['history']) == {'2002', '3019'}
+          assert set(data['analytics']) == {'2002', '3019'}
           assert data['generated_at'] is not None
-          print('JSON_VALIDATION_PASS')
+          assert data['bridge']['transport_ready'] is True
+          assert data['bridge']['analysis_ready'] is True
+          for symbol in ('2002', '3019'):
+              h = data['history'][symbol]
+              a = data['analytics'][symbol]
+              assert h['count'] >= 750
+              assert h['history_gate'] == 'PASS'
+              assert h['long_term_750_ready'] is True
+              assert a['analysis_ready'] is True
+              assert a['corporate_actions']['status'] == 'PASS'
+              t = a['technical_completed_day']
+              for key in ('ma20','ma60','ma120','ma240','rsi14','macd','macd_signal','atr14'):
+                  assert t[key] is not None, (symbol, key)
+              assert a['horizon_statistics']['240']['samples'] > 0
+          print('PHASE2_JSON_VALIDATION_PASS')
           print('bridge=', data.get('bridge'))
-          print('quote_2002=', data['quotes']['2002'].get('status'))
-          print('quote_3019=', data['quotes']['3019'].get('status'))
-          print('history_2002_count=', data['history']['2002'].get('count'))
-          print('history_3019_count=', data['history']['3019'].get('count'))
+          print('quotes=', {k: v.get('status') for k,v in data['quotes'].items()})
+          print('history_counts=', {k: v.get('count') for k,v in data['history'].items()})
+          print('corporate_actions=', {k: v['corporate_actions']['event_count'] for k,v in data['analytics'].items()})
           PY
 
       - name: Commit refreshed data
