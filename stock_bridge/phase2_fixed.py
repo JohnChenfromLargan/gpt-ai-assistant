@@ -6,7 +6,6 @@ import argparse
 import json
 import re
 import urllib.parse
-from datetime import date, timedelta
 
 import phase2 as p
 
@@ -28,16 +27,6 @@ def robust_roc_date_to_iso(value: str) -> str:
     raise ValueError(f"unsupported TWSE date: {value}")
 
 
-def short_ranges(start: str, end: str, days: int = 31):
-    a = date.fromisoformat(start)
-    b = date.fromisoformat(end)
-    cur = a
-    while cur <= b:
-        stop = min(b, cur + timedelta(days=days - 1))
-        yield cur.strftime("%Y%m%d"), stop.strftime("%Y%m%d")
-        cur = stop + timedelta(days=1)
-
-
 def corrected_fetch_corporate_actions(symbol: str, start: str, end: str):
     actions = []
     errors = []
@@ -56,7 +45,9 @@ def corrected_fetch_corporate_actions(symbol: str, start: str, end: str):
     source_market_rows = {kind: 0 for kind in endpoint_families}
     status_samples = {kind: [] for kind in endpoint_families}
 
-    for d1, d2 in short_ranges(start, end):
+    # Year-size windows are sufficient now that the real issue (ROC Chinese date format)
+    # is fixed. This keeps the scheduled job fast while retaining full 3-year coverage.
+    for d1, d2 in p.chunk_date_ranges(start, end, days=365):
         for kind, variants in endpoint_families.items():
             window_done = False
             last_problem = None
@@ -127,6 +118,7 @@ def run():
     for symbol, diag in diagnostics_by_symbol.items():
         data["analytics"][symbol]["corporate_actions"]["source_diagnostics"] = diag
 
+    # Regression sentinel: official TWSE data contains 2002 ex-dividend on 2026-07-24.
     history_2002 = p.load_history("2002")
     if history_2002 and history_2002[0]["date"] <= "2026-07-24" <= history_2002[-1]["date"]:
         events = data["analytics"]["2002"]["corporate_actions"]["events"]
@@ -151,9 +143,9 @@ def self_test():
     p.self_test()
     assert robust_roc_date_to_iso("115年07月24日") == "2026-07-24"
     assert robust_roc_date_to_iso("115/07/24") == "2026-07-24"
-    ranges = list(short_ranges("2026-07-01", "2026-08-15"))
-    assert ranges[0] == ("20260701", "20260731")
-    assert ranges[1] == ("20260801", "20260815")
+    ranges = list(p.chunk_date_ranges("2025-07-01", "2026-08-15", days=365))
+    assert ranges[0][0] == "20250701"
+    assert ranges[-1][1] == "20260815"
     q = urllib.parse.urlencode({"response": "json", "startDate": "20260724", "endDate": "20260724"})
     assert "startDate=20260724" in q and "endDate=20260724" in q
     print("PHASE2_FIXED_SELF_TEST_PASS")
