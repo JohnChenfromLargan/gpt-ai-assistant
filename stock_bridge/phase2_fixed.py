@@ -5,43 +5,77 @@ from __future__ import annotations
 import argparse
 import json
 import urllib.parse
+from datetime import date, timedelta
 
 import phase2 as p
+
+
+def short_ranges(start: str, end: str, days: int = 31):
+    a = date.fromisoformat(start)
+    b = date.fromisoformat(end)
+    cur = a
+    while cur <= b:
+        stop = min(b, cur + timedelta(days=days - 1))
+        yield cur.strftime("%Y%m%d"), stop.strftime("%Y%m%d")
+        cur = stop + timedelta(days=1)
 
 
 def corrected_fetch_corporate_actions(symbol: str, start: str, end: str):
     actions = []
     errors = []
-    # TWT49U moved to the RWD endpoint and uses startDate/endDate.
-    # TWTAUU also uses startDate/endDate for the range query.
-    endpoints = [
-        (
-            "EX_RIGHT_DIVIDEND",
-            "https://www.twse.com.tw/rwd/zh/exRight/TWT49U",
-            "startDate",
-            "endDate",
-        ),
-        (
-            "CAPITAL_REDUCTION",
-            "https://www.twse.com.tw/exchangeReport/TWTAUU",
-            "startDate",
-            "endDate",
-        ),
-    ]
-    source_success = {kind: 0 for kind, *_ in endpoints}
-    source_rows = {kind: 0 for kind, *_ in endpoints}
+    # Use the current RWD endpoint first, with the legacy exchangeReport endpoint as fallback.
+    endpoint_families = {
+        "EX_RIGHT_DIVIDEND": [
+            ("https://www.twse.com.tw/rwd/zh/exRight/TWT49U", "startDate", "endDate"),
+            ("https://www.twse.com.tw/exchangeReport/TWT49U", "strDate", "endDate"),
+        ],
+        "CAPITAL_REDUCTION": [
+            ("https://www.twse.com.tw/exchangeReport/TWTAUU", "startDate", "endDate"),
+            ("https://www.twse.com.tw/exchangeReport/TWTAUU", "strDate", "endDate"),
+        ],
+    }
+    source_success = {kind: 0 for kind in endpoint_families}
+    source_rows = {kind: 0 for kind in endpoint_families}
+    source_market_rows = {kind: 0 for kind in endpoint_families}
+    status_samples = {kind: [] for kind in endpoint_families}
 
-    for d1, d2 in p.chunk_date_ranges(start, end):
-        for kind, base, start_key, end_key in endpoints:
-            params = urllib.parse.urlencode({"response": "json", start_key: d1, end_key: d2})
-            try:
-                payload = p.http_json(base + "?" + params)
-                parsed = p.parse_action_table(payload, symbol, kind)
-                source_success[kind] += 1
-                source_rows[kind] += len(parsed)
-                actions.extend(parsed)
-            except Exception as exc:
-                errors.append(f"{kind}:{d1}-{d2}:{type(exc).__name__}:{exc}")
+    for d1, d2 in short_ranges(start, end):
+        for kind, variants in endpoint_families.items():
+            window_done = False
+            last_problem = None
+            for base, start_key, end_key in variants:
+                params = urllib.parse.urlencode({"response": "json", start_key: d1, end_key: d2})
+                url = base + "?" + params
+                try:
+                    payload = p.http_json(url)
+                    stat = str(payload.get("stat", "")) if isinstance(payload, dict) else "NON_DICT"
+                    fields = payload.get("fields") or [] if isinstance(payload, dict) else []
+                    rows = payload.get("data") or [] if isinstance(payload, dict) else []
+                    if len(status_samples[kind]) < 8:
+                        status_samples[kind].append({
+                            "range": f"{d1}-{d2}",
+                            "endpoint": base,
+                            "stat": stat,
+                            "market_rows": len(rows) if isinstance(rows, list) else None,
+                            "fields": fields[:6] if isinstance(fields, list) else None,
+                        })
+                    # A normal no-data response is still a successful source access.
+                    if isinstance(payload, dict) and isinstance(fields, list) and isinstance(rows, list):
+                        if rows and not fields:
+                            last_problem = f"{kind}:{d1}-{d2}:rows_without_fields:{base}"
+                            continue
+                        parsed = p.parse_action_table(payload, symbol, kind) if rows else []
+                        source_success[kind] += 1
+                        source_market_rows[kind] += len(rows)
+                        source_rows[kind] += len(parsed)
+                        actions.extend(parsed)
+                        window_done = True
+                        break
+                    last_problem = f"{kind}:{d1}-{d2}:unexpected_payload:{base}:{stat}"
+                except Exception as exc:
+                    last_problem = f"{kind}:{d1}-{d2}:{base}:{type(exc).__name__}:{exc}"
+            if not window_done and last_problem:
+                errors.append(last_problem)
 
     uniq = {}
     for a in actions:
@@ -50,13 +84,14 @@ def corrected_fetch_corporate_actions(symbol: str, start: str, end: str):
     diagnostics = {
         "source_success_windows": source_success,
         "source_action_rows": source_rows,
+        "source_market_rows": source_market_rows,
+        "status_samples": status_samples,
     }
     return result, errors, diagnostics
 
 
 def run():
     original = p.fetch_corporate_actions
-
     diagnostics_by_symbol = {}
 
     def adapter(symbol, start, end):
@@ -74,7 +109,6 @@ def run():
         data["analytics"][symbol]["corporate_actions"]["source_diagnostics"] = diag
 
     # Regression sentinel: official TWSE data contains 2002 ex-dividend on 2026-07-24.
-    # The 788-day history currently spans this date, so missing it is a source/parser failure.
     history_2002 = p.load_history("2002")
     if history_2002 and history_2002[0]["date"] <= "2026-07-24" <= history_2002[-1]["date"]:
         events = data["analytics"]["2002"]["corporate_actions"]["events"]
@@ -86,7 +120,10 @@ def run():
             data["bridge"]["analysis_ready"] = False
             data["bridge"]["symbol_analysis_ready"]["2002"] = False
             p.LATEST_PATH.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-            raise RuntimeError("CORPORATE_ACTION_REGRESSION: missing official 2002 ex-dividend event 2026-07-24")
+            raise RuntimeError(
+                "CORPORATE_ACTION_REGRESSION: missing official 2002 ex-dividend event 2026-07-24; "
+                + json.dumps(diagnostics_by_symbol.get("2002", {}), ensure_ascii=False)
+            )
 
     p.LATEST_PATH.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return data
@@ -94,7 +131,9 @@ def run():
 
 def self_test():
     p.self_test()
-    # Verify URL parameter contract without network access.
+    ranges = list(short_ranges("20260701", "20260815"))
+    assert ranges[0] == ("20260701", "20260731")
+    assert ranges[1] == ("20260801", "20260815")
     q = urllib.parse.urlencode({"response": "json", "startDate": "20260724", "endDate": "20260724"})
     assert "startDate=20260724" in q and "endDate=20260724" in q
     print("PHASE2_FIXED_SELF_TEST_PASS")
@@ -114,6 +153,7 @@ def main():
         "symbol_analysis_ready": data["bridge"]["symbol_analysis_ready"],
         "corporate_action_status": {s: data["analytics"][s]["corporate_actions"]["status"] for s in p.SYMBOLS},
         "corporate_action_counts": {s: data["analytics"][s]["corporate_actions"]["event_count"] for s in p.SYMBOLS},
+        "corporate_action_source_diagnostics": {s: data["analytics"][s]["corporate_actions"].get("source_diagnostics") for s in p.SYMBOLS},
     }, ensure_ascii=False))
     return 0
 
