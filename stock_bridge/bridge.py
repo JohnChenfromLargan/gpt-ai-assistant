@@ -1,22 +1,20 @@
 #!/usr/bin/env python3
 """TWSE stock data bridge for ChatGPT scheduled monitoring.
 
-MVP scope:
+Phase 1 responsibilities:
 - Fetch intraday MIS quotes for 2002 and 3019.
 - Maintain >= 750 completed daily OHLCV rows per symbol from TWSE STOCK_DAY.
 - Cross-check the latest completed day with TWSE OpenAPI STOCK_DAY_ALL.
 - Write a single stable JSON document at stock_bridge/latest.json.
 
-This module deliberately does NOT make investment decisions. It only prepares
-validated market data for the downstream ChatGPT scheduled task.
+The bridge does not make investment decisions. Phase 2 enriches this raw/validated
+market data with corporate-action adjustment and analytics.
 """
 
 from __future__ import annotations
 
 import argparse
-import calendar
 import json
-import os
 import sys
 import time
 import urllib.parse
@@ -28,14 +26,14 @@ from typing import Any, Iterable
 
 TZ_TAIPEI = timezone(timedelta(hours=8))
 SYMBOLS = {"2002": "中鋼", "3019": "亞光"}
-TARGET_HISTORY_ROWS = 780  # headroom above the 750-day long-term gate
+TARGET_HISTORY_ROWS = 780
 MIN_HISTORY_GATE = 260
 LONG_HISTORY_GATE = 750
 MIS_MAX_SAMPLES = 8
 MIS_FIRST_STAGE_SAMPLES = 4
 MIS_SAMPLE_INTERVAL_SECONDS = 5
 HTTP_TIMEOUT = 20
-USER_AGENT = "Mozilla/5.0 (compatible; TWSE-Stock-Bridge/1.0; +https://github.com/)"
+USER_AGENT = "Mozilla/5.0 (compatible; TWSE-Stock-Bridge/1.1; +https://github.com/)"
 
 ROOT = Path(__file__).resolve().parent
 LATEST_PATH = ROOT / "latest.json"
@@ -134,7 +132,6 @@ def month_starts_backwards(start: datetime, months: int) -> Iterable[datetime]:
 
 
 def stable_unique_token(symbol: str, sample_index: int) -> str:
-    # Dynamic URLs are created by GitHub Actions, not by the ChatGPT Web tool.
     return f"{int(time.time() * 1000)}{symbol}{sample_index:02d}"
 
 
@@ -158,8 +155,7 @@ def extract_quote_candidate(payload: dict[str, Any], symbol: str) -> QuoteCandid
     for item in messages:
         if str(item.get("c", "")) != symbol:
             continue
-        expected_name = SYMBOLS[symbol]
-        if str(item.get("n", "")) != expected_name:
+        if str(item.get("n", "")) != SYMBOLS[symbol]:
             continue
         price = parse_number(item.get("z"))
         if price is None or price <= 0:
@@ -222,11 +218,10 @@ def fetch_quote(symbol: str) -> dict[str, Any]:
             if candidate:
                 candidates.append(candidate)
                 break
-        except Exception as exc:  # network errors are reported, never guessed around
+        except Exception as exc:
             last_error = f"{type(exc).__name__}: {exc}"
             samples.append({"sample": i + 1, "error": last_error})
 
-        # Always complete first four samples. Extra samples are only needed when no z was found.
         if i + 1 >= MIS_FIRST_STAGE_SAMPLES and candidates:
             break
         if i + 1 < MIS_MAX_SAMPLES:
@@ -343,26 +338,26 @@ def validate_history(rows: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], 
     by_date: dict[str, dict[str, Any]] = {}
     errors: list[str] = []
     for row in rows:
-        date = str(row.get("date", ""))
+        date_text = str(row.get("date", ""))
         try:
-            datetime.fromisoformat(date)
+            datetime.fromisoformat(date_text)
         except ValueError:
-            errors.append(f"invalid_date:{date}")
+            errors.append(f"invalid_date:{date_text}")
             continue
         values = [row.get(k) for k in ("open", "high", "low", "close")]
         if any(v is None for v in values):
-            errors.append(f"missing_ohlc:{date}")
+            errors.append(f"missing_ohlc:{date_text}")
             continue
         o, h, l, c = map(float, values)
         if h < max(o, l, c) or l > min(o, h, c):
-            errors.append(f"invalid_ohlc:{date}")
+            errors.append(f"invalid_ohlc:{date_text}")
             continue
         volume = row.get("volume")
         if volume is None or int(volume) < 0:
-            errors.append(f"invalid_volume:{date}")
+            errors.append(f"invalid_volume:{date_text}")
             continue
-        by_date[date] = {
-            "date": date,
+        by_date[date_text] = {
+            "date": date_text,
             "volume": int(volume),
             "open": o,
             "high": h,
@@ -382,11 +377,11 @@ def openapi_latest_rows() -> dict[str, dict[str, Any]]:
             continue
         date_raw = str(row.get("Date", ""))
         try:
-            date = roc_date_to_iso(date_raw)
+            date_text = roc_date_to_iso(date_raw)
         except ValueError:
             continue
         result[code] = {
-            "date": date,
+            "date": date_text,
             "volume": parse_int(row.get("TradeVolume")),
             "open": parse_number(row.get("OpeningPrice")),
             "high": parse_number(row.get("HighestPrice")),
@@ -400,6 +395,7 @@ def update_history(symbol: str, latest_openapi: dict[str, Any] | None) -> tuple[
     existing = load_history(symbol)
     combined = list(existing)
     now = now_taipei()
+    today_iso = now.date().isoformat()
 
     # Always refresh current and previous month. Bootstrap older months only when needed.
     months_to_fetch = 2 if len(existing) >= TARGET_HISTORY_ROWS else 48
@@ -408,26 +404,41 @@ def update_history(symbol: str, latest_openapi: dict[str, Any] | None) -> tuple[
             payload = http_json(stock_day_url(symbol, month_start))
             combined.extend(parse_stock_day(payload, symbol))
         except Exception as exc:
-            # Do not discard existing validated history because one month failed.
             print(f"WARN {symbol} {month_start:%Y-%m}: {type(exc).__name__}: {exc}", file=sys.stderr)
-        validated, _ = validate_history(combined)
-        combined = validated
+        validated_loop, _ = validate_history(combined)
+        # The ChatGPT task only runs before noon. Today's bar is always treated as intraday
+        # quote data, never as completed historical OHLCV, even if a code/document push runs
+        # the bridge after market close.
+        combined = [r for r in validated_loop if r["date"] < today_iso]
         if len(existing) < TARGET_HISTORY_ROWS and len(combined) >= TARGET_HISTORY_ROWS and month_start.month not in {now.month, (now.month - 1) or 12}:
             break
 
-    # Official OpenAPI may have the newest completed day before the monthly page refreshes.
-    if latest_openapi and latest_openapi.get("date"):
+    # OpenAPI can patch the newest completed day, but never inject today's still-separate bar.
+    openapi_date = latest_openapi.get("date") if latest_openapi else None
+    if latest_openapi and openapi_date and openapi_date < today_iso:
         candidate = latest_openapi
         if all(candidate.get(k) is not None for k in ("date", "volume", "open", "high", "low", "close")):
             combined.append(candidate)
 
     validated, errors = validate_history(combined)
-    # Keep a little headroom but avoid unbounded repo growth.
+    validated = [r for r in validated if r["date"] < today_iso]
     if len(validated) > 900:
         validated = validated[-900:]
 
     latest_date = validated[-1]["date"] if validated else None
-    expected_latest = latest_openapi.get("date") if latest_openapi else None
+    # During the monitoring window, OpenAPI normally points at the previous trading day.
+    # After the close it may already point at today while monthly publication is still racing.
+    # In that case defer same-day cross-check: today's data belongs to quote/intraday handling.
+    if openapi_date and openapi_date < today_iso:
+        expected_latest = openapi_date
+        crosscheck_status = "PASS" if latest_date == expected_latest else "FAIL"
+    elif openapi_date and openapi_date >= today_iso:
+        expected_latest = latest_date
+        crosscheck_status = "DEFER_CURRENT_DAY"
+    else:
+        expected_latest = latest_date
+        crosscheck_status = "OPENAPI_UNAVAILABLE"
+
     freshness = bool(latest_date and expected_latest and latest_date == expected_latest)
     count = len(validated)
 
@@ -437,6 +448,7 @@ def update_history(symbol: str, latest_openapi: dict[str, Any] | None) -> tuple[
         "first_date": validated[0]["date"] if validated else None,
         "last_date": latest_date,
         "expected_latest_completed_date": expected_latest,
+        "latest_day_crosscheck_status": crosscheck_status,
         "path_status": "PASS" if validated else "FAIL",
         "freshness_status": "PASS" if freshness else "FAIL",
         "history_gate": "PASS" if freshness and count >= MIN_HISTORY_GATE and not errors else "FAIL",
@@ -472,8 +484,6 @@ def build_latest() -> dict[str, Any]:
         write_history(symbol, rows, meta)
         histories[symbol] = meta
 
-    # MVP bridge readiness means fixed data transport works. Investment analysis
-    # remains disabled until phase 2 completes corporate-action adjustment + indicators.
     transport_ready = any(q.get("status") == "PASS" for q in quotes.values()) and all(
         h.get("count", 0) >= MIN_HISTORY_GATE for h in histories.values()
     )
@@ -493,7 +503,7 @@ def build_latest() -> dict[str, Any]:
             "transport_ready": transport_ready,
             "analysis_ready": False,
             "phase": "MVP_DATA_BRIDGE",
-            "note": "Phase 2 will add corporate-action adjustment and technical indicators before investment-signal use.",
+            "note": "Phase 2 adds corporate-action adjustment and technical indicators before investment-signal use.",
         },
         "quotes": quotes,
         "history": histories,
