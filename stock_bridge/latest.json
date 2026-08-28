@@ -1,40 +1,698 @@
 {
-  "schema_version": "1.0",
-  "generated_at": null,
-  "market_date": null,
+  "schema_version": "2.0",
+  "generated_at": "2026-08-28T13:40:27+08:00",
+  "market_date": "2026-08-28",
   "source": {
-    "primary": "TWSE"
+    "primary": "TWSE",
+    "quote": "TWSE MIS getStockInfo.jsp",
+    "history": "TWSE STOCK_DAY",
+    "latest_day_crosscheck": "TWSE OpenAPI STOCK_DAY_ALL",
+    "openapi_status": "PASS"
   },
   "bridge": {
-    "transport_ready": false,
-    "analysis_ready": false,
-    "phase": "MVP_DATA_BRIDGE",
-    "note": "Placeholder. GitHub Actions will replace this after the first successful production run."
+    "transport_ready": true,
+    "analysis_ready": true,
+    "phase": "PHASE2_ANALYTICS",
+    "note": "Corporate-action adjustment + MA/RSI/MACD/ATR + multi-horizon statistics applied; bridge itself does not issue investment signals.",
+    "symbol_analysis_ready": {
+      "2002": true,
+      "3019": true
+    }
   },
   "quotes": {
     "2002": {
-      "status": "NOT_RUN",
-      "name": "中鋼"
+      "status": "PASS",
+      "name": "中鋼",
+      "price": 19.05,
+      "trade_date": "2026-08-28",
+      "trade_time": "13:30:00",
+      "age_seconds": 633.3,
+      "open": 19.15,
+      "high": 19.15,
+      "low": 19.0,
+      "volume": 22346,
+      "sample_count": 1,
+      "samples": [
+        {
+          "sample": 1,
+          "query_date": "2026-08-28",
+          "query_time": "13:40:31",
+          "trade_date": "2026-08-28",
+          "trade_time": "13:30:00",
+          "z": "19.0500",
+          "volume": 22346
+        }
+      ],
+      "last_error": null
     },
     "3019": {
-      "status": "NOT_RUN",
-      "name": "亞光"
+      "status": "PASS",
+      "name": "亞光",
+      "price": 138.5,
+      "trade_date": "2026-08-28",
+      "trade_time": "13:30:00",
+      "age_seconds": 656.2,
+      "open": 140.5,
+      "high": 140.5,
+      "low": 136.5,
+      "volume": 2423,
+      "sample_count": 1,
+      "samples": [
+        {
+          "sample": 1,
+          "query_date": "2026-08-28",
+          "query_time": "13:40:56",
+          "trade_date": "2026-08-28",
+          "trade_time": "13:30:00",
+          "z": "138.5000",
+          "volume": 2423
+        }
+      ],
+      "last_error": null
     }
   },
   "history": {
     "2002": {
-      "count": 0,
-      "history_gate": "FAIL",
-      "long_term_750_ready": false,
-      "price_adjustment_status": "PENDING_PHASE_2",
-      "analysis_ready": false
+      "name": "中鋼",
+      "count": 788,
+      "first_date": "2023-06-01",
+      "last_date": "2026-08-27",
+      "expected_latest_completed_date": "2026-08-27",
+      "path_status": "PASS",
+      "freshness_status": "PASS",
+      "history_gate": "PASS",
+      "long_term_750_ready": true,
+      "integrity_error_count": 0,
+      "integrity_errors_sample": [],
+      "price_adjustment_status": "PASS",
+      "analysis_ready": true
     },
     "3019": {
-      "count": 0,
-      "history_gate": "FAIL",
-      "long_term_750_ready": false,
-      "price_adjustment_status": "PENDING_PHASE_2",
-      "analysis_ready": false
+      "name": "亞光",
+      "count": 788,
+      "first_date": "2023-06-01",
+      "last_date": "2026-08-27",
+      "expected_latest_completed_date": "2026-08-27",
+      "path_status": "PASS",
+      "freshness_status": "PASS",
+      "history_gate": "PASS",
+      "long_term_750_ready": true,
+      "integrity_error_count": 0,
+      "integrity_errors_sample": [],
+      "price_adjustment_status": "PASS",
+      "analysis_ready": true
+    }
+  },
+  "analytics": {
+    "2002": {
+      "analysis_ready": true,
+      "corporate_actions": {
+        "status": "PASS",
+        "event_count": 4,
+        "events": [
+          {
+            "date": "2023-07-26",
+            "kind": "EX_RIGHT_DIVIDEND",
+            "name": "中鋼",
+            "type": "息",
+            "pre_close": 29.35,
+            "reference_price": 28.35,
+            "back_adjust_factor": 0.9659284497444633
+          },
+          {
+            "date": "2024-07-25",
+            "kind": "EX_RIGHT_DIVIDEND",
+            "name": "中鋼",
+            "type": "息",
+            "pre_close": 23.15,
+            "reference_price": 22.8,
+            "back_adjust_factor": 0.9848812095032399
+          },
+          {
+            "date": "2025-07-24",
+            "kind": "EX_RIGHT_DIVIDEND",
+            "name": "中鋼",
+            "type": "息",
+            "pre_close": 20.0,
+            "reference_price": 19.67,
+            "back_adjust_factor": 0.9835
+          },
+          {
+            "date": "2026-07-24",
+            "kind": "EX_RIGHT_DIVIDEND",
+            "name": "中鋼",
+            "type": "息",
+            "pre_close": 19.1,
+            "reference_price": 18.95,
+            "back_adjust_factor": 0.9921465968586386
+          }
+        ],
+        "fetch_error_count": 0,
+        "fetch_errors_sample": [],
+        "unresolved_discontinuities": [],
+        "method": "back_adjust_prior_ohlc_by_reference_price/pre_close; raw volume retained",
+        "source_diagnostics": {
+          "source_success_windows": {
+            "EX_RIGHT_DIVIDEND": 4,
+            "CAPITAL_REDUCTION": 4
+          },
+          "source_action_rows": {
+            "EX_RIGHT_DIVIDEND": 4,
+            "CAPITAL_REDUCTION": 0
+          },
+          "source_market_rows": {
+            "EX_RIGHT_DIVIDEND": 4681,
+            "CAPITAL_REDUCTION": 57
+          },
+          "status_samples": {
+            "EX_RIGHT_DIVIDEND": [
+              {
+                "range": "20230601-20240530",
+                "endpoint": "https://www.twse.com.tw/rwd/zh/exRight/TWT49U",
+                "stat": "OK",
+                "market_rows": 1112,
+                "fields": [
+                  "資料日期",
+                  "股票代號",
+                  "股票名稱",
+                  "除權息前收盤價",
+                  "除權息參考價",
+                  "權值+息值"
+                ]
+              },
+              {
+                "range": "20240531-20250530",
+                "endpoint": "https://www.twse.com.tw/rwd/zh/exRight/TWT49U",
+                "stat": "OK",
+                "market_rows": 1261,
+                "fields": [
+                  "資料日期",
+                  "股票代號",
+                  "股票名稱",
+                  "除權息前收盤價",
+                  "除權息參考價",
+                  "權值+息值"
+                ]
+              },
+              {
+                "range": "20250531-20260530",
+                "endpoint": "https://www.twse.com.tw/rwd/zh/exRight/TWT49U",
+                "stat": "OK",
+                "market_rows": 1436,
+                "fields": [
+                  "資料日期",
+                  "股票代號",
+                  "股票名稱",
+                  "除權息前收盤價",
+                  "除權息參考價",
+                  "權值+息值"
+                ]
+              },
+              {
+                "range": "20260531-20260827",
+                "endpoint": "https://www.twse.com.tw/rwd/zh/exRight/TWT49U",
+                "stat": "OK",
+                "market_rows": 872,
+                "fields": [
+                  "資料日期",
+                  "股票代號",
+                  "股票名稱",
+                  "除權息前收盤價",
+                  "除權息參考價",
+                  "權值+息值"
+                ]
+              }
+            ],
+            "CAPITAL_REDUCTION": [
+              {
+                "range": "20230601-20240530",
+                "endpoint": "https://www.twse.com.tw/exchangeReport/TWTAUU",
+                "stat": "OK",
+                "market_rows": 24,
+                "fields": [
+                  "恢復買賣日期",
+                  "股票代號",
+                  "名稱",
+                  "停止買賣前收盤價格",
+                  "恢復買賣參考價",
+                  "漲停價格"
+                ]
+              },
+              {
+                "range": "20240531-20250530",
+                "endpoint": "https://www.twse.com.tw/exchangeReport/TWTAUU",
+                "stat": "OK",
+                "market_rows": 13,
+                "fields": [
+                  "恢復買賣日期",
+                  "股票代號",
+                  "名稱",
+                  "停止買賣前收盤價格",
+                  "恢復買賣參考價",
+                  "漲停價格"
+                ]
+              },
+              {
+                "range": "20250531-20260530",
+                "endpoint": "https://www.twse.com.tw/exchangeReport/TWTAUU",
+                "stat": "OK",
+                "market_rows": 17,
+                "fields": [
+                  "恢復買賣日期",
+                  "股票代號",
+                  "名稱",
+                  "停止買賣前收盤價格",
+                  "恢復買賣參考價",
+                  "漲停價格"
+                ]
+              },
+              {
+                "range": "20260531-20260827",
+                "endpoint": "https://www.twse.com.tw/exchangeReport/TWTAUU",
+                "stat": "OK",
+                "market_rows": 3,
+                "fields": [
+                  "恢復買賣日期",
+                  "股票代號",
+                  "名稱",
+                  "停止買賣前收盤價格",
+                  "恢復買賣參考價",
+                  "漲停價格"
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "technical_completed_day": {
+        "date": "2026-08-27",
+        "ma5": 19.240000000000002,
+        "ma20": 19.1625,
+        "ma60": 18.894406616666668,
+        "ma120": 18.95651505833333,
+        "ma240": 18.9615254125,
+        "rsi14": 51.240877539566284,
+        "macd": 0.08585789330018656,
+        "macd_signal": 0.10087047824782257,
+        "macd_histogram": -0.015012584947636007,
+        "atr14": 0.3459873349983519
+      },
+      "technical_intraday_estimate": {
+        "date": "2026-08-28",
+        "ma5": 19.16,
+        "ma20": 19.1675,
+        "ma60": 18.89111255,
+        "ma120": 18.95073408333333,
+        "ma240": 18.958428225,
+        "rsi14": 49.15163767363627,
+        "macd": 0.06885616755497637,
+        "macd_signal": 0.09446761610925333,
+        "macd_histogram": -0.025611448554276967,
+        "atr14": 0.3319882396413267
+      },
+      "horizon_statistics": {
+        "10": {
+          "samples": 778,
+          "p10_pct": -5.154782322724616,
+          "p25_pct": -3.0409945371520446,
+          "median_pct": -0.6753072467669652,
+          "p75_pct": 1.827973074085415,
+          "p90_pct": 5.081571401595289,
+          "mean_pct": -0.3917350768450122,
+          "positive_probability": 0.39845758354755784
+        },
+        "20": {
+          "samples": 768,
+          "p10_pct": -7.866461338892878,
+          "p25_pct": -4.864862917400989,
+          "median_pct": -1.323257450143367,
+          "p75_pct": 2.7474326004427505,
+          "p90_pct": 5.776954515118016,
+          "mean_pct": -0.7814656868731138,
+          "positive_probability": 0.3997395833333333
+        },
+        "22": {
+          "samples": 766,
+          "p10_pct": -8.219191887071087,
+          "p25_pct": -4.8929341118031875,
+          "median_pct": -1.5564442141305923,
+          "p75_pct": 2.90055329987583,
+          "p90_pct": 6.2128866990293075,
+          "mean_pct": -0.867624919622892,
+          "positive_probability": 0.40339425587467365
+        },
+        "40": {
+          "samples": 748,
+          "p10_pct": -10.518073202538995,
+          "p25_pct": -7.18314690396904,
+          "median_pct": -3.033590443693146,
+          "p75_pct": 2.689005077868545,
+          "p90_pct": 8.577024411299165,
+          "mean_pct": -1.709881990682193,
+          "positive_probability": 0.36363636363636365
+        },
+        "60": {
+          "samples": 728,
+          "p10_pct": -12.317373665475586,
+          "p25_pct": -7.9614348879673615,
+          "median_pct": -2.8069483617685798,
+          "p75_pct": 2.4460738849534094,
+          "p90_pct": 7.333901338001573,
+          "mean_pct": -2.696046720616975,
+          "positive_probability": 0.3598901098901099
+        },
+        "120": {
+          "samples": 668,
+          "p10_pct": -13.288445550309802,
+          "p25_pct": -10.08968874680839,
+          "median_pct": -6.788813354942641,
+          "p75_pct": -0.20336069704361692,
+          "p90_pct": 3.6220931288245843,
+          "mean_pct": -5.27776207652304,
+          "positive_probability": 0.23652694610778444
+        },
+        "240": {
+          "samples": 548,
+          "p10_pct": -19.5108789383246,
+          "p25_pct": -17.747127615684384,
+          "median_pct": -13.245885551723969,
+          "p75_pct": -4.76230213673563,
+          "p90_pct": 0.15612255124895433,
+          "mean_pct": -11.441921681257258,
+          "positive_probability": 0.11313868613138686
+        },
+        "current_20d_range": {
+          "low": 18.85,
+          "high": 19.75
+        },
+        "current_60d_range": {
+          "low": 18.255497,
+          "high": 19.75
+        },
+        "current_120d_range": {
+          "low": 17.957853,
+          "high": 20.339005
+        },
+        "current_240d_range": {
+          "low": 17.511387,
+          "high": 21.083115
+        }
+      }
+    },
+    "3019": {
+      "analysis_ready": true,
+      "corporate_actions": {
+        "status": "PASS",
+        "event_count": 4,
+        "events": [
+          {
+            "date": "2023-06-30",
+            "kind": "EX_RIGHT_DIVIDEND",
+            "name": "亞光",
+            "type": "息",
+            "pre_close": 66.3,
+            "reference_price": 64.4,
+            "back_adjust_factor": 0.9713423831070891
+          },
+          {
+            "date": "2024-06-20",
+            "kind": "EX_RIGHT_DIVIDEND",
+            "name": "亞光",
+            "type": "息",
+            "pre_close": 70.9,
+            "reference_price": 69.1,
+            "back_adjust_factor": 0.9746121297602255
+          },
+          {
+            "date": "2025-06-24",
+            "kind": "EX_RIGHT_DIVIDEND",
+            "name": "亞光",
+            "type": "息",
+            "pre_close": 135.0,
+            "reference_price": 131.0,
+            "back_adjust_factor": 0.9703703703703703
+          },
+          {
+            "date": "2026-06-24",
+            "kind": "EX_RIGHT_DIVIDEND",
+            "name": "亞光",
+            "type": "息",
+            "pre_close": 157.0,
+            "reference_price": 152.4,
+            "back_adjust_factor": 0.9707006369426752
+          }
+        ],
+        "fetch_error_count": 0,
+        "fetch_errors_sample": [],
+        "unresolved_discontinuities": [],
+        "method": "back_adjust_prior_ohlc_by_reference_price/pre_close; raw volume retained",
+        "source_diagnostics": {
+          "source_success_windows": {
+            "EX_RIGHT_DIVIDEND": 4,
+            "CAPITAL_REDUCTION": 4
+          },
+          "source_action_rows": {
+            "EX_RIGHT_DIVIDEND": 4,
+            "CAPITAL_REDUCTION": 0
+          },
+          "source_market_rows": {
+            "EX_RIGHT_DIVIDEND": 4681,
+            "CAPITAL_REDUCTION": 57
+          },
+          "status_samples": {
+            "EX_RIGHT_DIVIDEND": [
+              {
+                "range": "20230601-20240530",
+                "endpoint": "https://www.twse.com.tw/rwd/zh/exRight/TWT49U",
+                "stat": "OK",
+                "market_rows": 1112,
+                "fields": [
+                  "資料日期",
+                  "股票代號",
+                  "股票名稱",
+                  "除權息前收盤價",
+                  "除權息參考價",
+                  "權值+息值"
+                ]
+              },
+              {
+                "range": "20240531-20250530",
+                "endpoint": "https://www.twse.com.tw/rwd/zh/exRight/TWT49U",
+                "stat": "OK",
+                "market_rows": 1261,
+                "fields": [
+                  "資料日期",
+                  "股票代號",
+                  "股票名稱",
+                  "除權息前收盤價",
+                  "除權息參考價",
+                  "權值+息值"
+                ]
+              },
+              {
+                "range": "20250531-20260530",
+                "endpoint": "https://www.twse.com.tw/rwd/zh/exRight/TWT49U",
+                "stat": "OK",
+                "market_rows": 1436,
+                "fields": [
+                  "資料日期",
+                  "股票代號",
+                  "股票名稱",
+                  "除權息前收盤價",
+                  "除權息參考價",
+                  "權值+息值"
+                ]
+              },
+              {
+                "range": "20260531-20260827",
+                "endpoint": "https://www.twse.com.tw/rwd/zh/exRight/TWT49U",
+                "stat": "OK",
+                "market_rows": 872,
+                "fields": [
+                  "資料日期",
+                  "股票代號",
+                  "股票名稱",
+                  "除權息前收盤價",
+                  "除權息參考價",
+                  "權值+息值"
+                ]
+              }
+            ],
+            "CAPITAL_REDUCTION": [
+              {
+                "range": "20230601-20240530",
+                "endpoint": "https://www.twse.com.tw/exchangeReport/TWTAUU",
+                "stat": "OK",
+                "market_rows": 24,
+                "fields": [
+                  "恢復買賣日期",
+                  "股票代號",
+                  "名稱",
+                  "停止買賣前收盤價格",
+                  "恢復買賣參考價",
+                  "漲停價格"
+                ]
+              },
+              {
+                "range": "20240531-20250530",
+                "endpoint": "https://www.twse.com.tw/exchangeReport/TWTAUU",
+                "stat": "OK",
+                "market_rows": 13,
+                "fields": [
+                  "恢復買賣日期",
+                  "股票代號",
+                  "名稱",
+                  "停止買賣前收盤價格",
+                  "恢復買賣參考價",
+                  "漲停價格"
+                ]
+              },
+              {
+                "range": "20250531-20260530",
+                "endpoint": "https://www.twse.com.tw/exchangeReport/TWTAUU",
+                "stat": "OK",
+                "market_rows": 17,
+                "fields": [
+                  "恢復買賣日期",
+                  "股票代號",
+                  "名稱",
+                  "停止買賣前收盤價格",
+                  "恢復買賣參考價",
+                  "漲停價格"
+                ]
+              },
+              {
+                "range": "20260531-20260827",
+                "endpoint": "https://www.twse.com.tw/exchangeReport/TWTAUU",
+                "stat": "OK",
+                "market_rows": 3,
+                "fields": [
+                  "恢復買賣日期",
+                  "股票代號",
+                  "名稱",
+                  "停止買賣前收盤價格",
+                  "恢復買賣參考價",
+                  "漲停價格"
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "technical_completed_day": {
+        "date": "2026-08-27",
+        "ma5": 135.1,
+        "ma20": 134.975,
+        "ma60": 140.32608278333333,
+        "ma120": 136.46189487499998,
+        "ma240": 140.000103475,
+        "rsi14": 52.9683876080656,
+        "macd": -0.22135815922740676,
+        "macd_signal": -0.6248015613532423,
+        "macd_histogram": 0.4034434021258355,
+        "atr14": 5.992395964593224
+      },
+      "technical_intraday_estimate": {
+        "date": "2026-08-28",
+        "ma5": 135.7,
+        "ma20": 135.5,
+        "ma60": 140.18339701666667,
+        "ma120": 136.53615708333334,
+        "ma240": 139.9320753416667,
+        "rsi14": 53.6452587119044,
+        "macd": 0.019572080145195514,
+        "macd_signal": -0.4959268330535548,
+        "macd_histogram": 0.5154989131987503,
+        "atr14": 5.8500819671222795
+      },
+      "horizon_statistics": {
+        "10": {
+          "samples": 778,
+          "p10_pct": -7.856615928661212,
+          "p25_pct": -3.590667809390899,
+          "median_pct": 0.887581360967904,
+          "p75_pct": 4.510626714390581,
+          "p90_pct": 10.494594695388129,
+          "mean_pct": 1.5263575538221574,
+          "positive_probability": 0.5526992287917738
+        },
+        "20": {
+          "samples": 768,
+          "p10_pct": -11.346466942670705,
+          "p25_pct": -4.602037785866569,
+          "median_pct": 1.083258413484589,
+          "p75_pct": 7.1991250698969385,
+          "p90_pct": 21.10776453668563,
+          "mean_pct": 3.0648812472284903,
+          "positive_probability": 0.5442708333333334
+        },
+        "22": {
+          "samples": 766,
+          "p10_pct": -11.64420824012255,
+          "p25_pct": -4.774285835749453,
+          "median_pct": 0.6294915131961232,
+          "p75_pct": 7.943116893333318,
+          "p90_pct": 22.540483397809318,
+          "mean_pct": 3.353618768742468,
+          "positive_probability": 0.5274151436031331
+        },
+        "40": {
+          "samples": 748,
+          "p10_pct": -12.975401178178133,
+          "p25_pct": -6.982497505677457,
+          "median_pct": 0.6235417815408484,
+          "p75_pct": 13.15324040497241,
+          "p90_pct": 38.62993306426395,
+          "mean_pct": 6.53398090520893,
+          "positive_probability": 0.516042780748663
+        },
+        "60": {
+          "samples": 728,
+          "p10_pct": -14.250467614437762,
+          "p25_pct": -6.5321139426385875,
+          "median_pct": 2.3810624108650313,
+          "p75_pct": 17.866304577444165,
+          "p90_pct": 53.46313456070849,
+          "mean_pct": 10.166984423584054,
+          "positive_probability": 0.5494505494505495
+        },
+        "120": {
+          "samples": 668,
+          "p10_pct": -15.077528695424865,
+          "p25_pct": -0.02848562421066403,
+          "median_pct": 6.526695469784228,
+          "p75_pct": 31.878459229606285,
+          "p90_pct": 76.12676139475406,
+          "mean_pct": 20.878480488765423,
+          "positive_probability": 0.7470059880239521
+        },
+        "240": {
+          "samples": 548,
+          "p10_pct": -12.33233627110804,
+          "p25_pct": 7.1964659875435375,
+          "median_pct": 43.41973848158099,
+          "p75_pct": 94.70866425638988,
+          "p90_pct": 140.988230210367,
+          "mean_pct": 55.1218976696561,
+          "positive_probability": 0.8193430656934306
+        },
+        "current_20d_range": {
+          "low": 128.0,
+          "high": 141.0
+        },
+        "current_60d_range": {
+          "low": 119.0,
+          "high": 159.194904
+        },
+        "current_120d_range": {
+          "low": 116.969427,
+          "high": 159.194904
+        },
+        "current_240d_range": {
+          "low": 116.969427,
+          "high": 166.475159
+        }
+      }
     }
   }
 }
