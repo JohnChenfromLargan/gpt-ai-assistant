@@ -2,6 +2,15 @@ name: TWSE Stock Bridge
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - 'stock_bridge/bridge.py'
+      - 'stock_bridge/phase2.py'
+      - 'stock_bridge/phase2_fixed.py'
+      - 'stock_bridge/README.md'
+      - '.github/workflows/twse-stock-bridge.yml'
   pull_request:
     paths:
       - 'stock_bridge/**'
@@ -44,13 +53,10 @@ jobs:
           with urllib.request.urlopen(req, timeout=30) as resp:
               data = json.loads(resp.read().decode('utf-8-sig'))
           print('stat=', data.get('stat'))
-          print('fields=', data.get('fields'))
-          rows = data.get('data') or []
-          print('row_count=', len(rows))
           fields = data.get('fields') or []
+          rows = data.get('data') or []
           code_idx = fields.index('股票代號') if '股票代號' in fields else None
           hits = [r for r in rows if code_idx is not None and str(r[code_idx]).strip() == '2002']
-          print('2002_hits=', hits)
           assert hits, 'TWSE corporate-action smoke failed: 2002 not found on official 2026-07-24 ex-dividend date'
           print('CORPORATE_ACTION_SOURCE_SMOKE_PASS')
           PY
@@ -95,7 +101,6 @@ jobs:
           print('quotes=', {k: v.get('status') for k,v in data['quotes'].items()})
           print('history_counts=', {k: v.get('count') for k,v in data['history'].items()})
           print('corporate_actions=', {k: v['corporate_actions']['event_count'] for k,v in data['analytics'].items()})
-          print('corporate_action_sources=', {k: v['corporate_actions'].get('source_diagnostics') for k,v in data['analytics'].items()})
           PY
 
       - name: Commit refreshed data
