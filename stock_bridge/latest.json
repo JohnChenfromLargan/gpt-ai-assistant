@@ -1,6 +1,6 @@
 {
   "schema_version": "2.0",
-  "generated_at": "2026-08-28T13:40:27+08:00",
+  "generated_at": "2026-08-28T13:49:52+08:00",
   "market_date": "2026-08-28",
   "source": {
     "primary": "TWSE",
@@ -10,7 +10,7 @@
     "openapi_status": "PASS"
   },
   "bridge": {
-    "transport_ready": true,
+    "transport_ready": false,
     "analysis_ready": true,
     "phase": "PHASE2_ANALYTICS",
     "note": "Corporate-action adjustment + MA/RSI/MACD/ATR + multi-horizon statistics applied; bridge itself does not issue investment signals.",
@@ -21,22 +21,18 @@
   },
   "quotes": {
     "2002": {
-      "status": "PASS",
+      "status": "FAIL_STALE_TRADE",
       "name": "中鋼",
       "price": 19.05,
       "trade_date": "2026-08-28",
       "trade_time": "13:30:00",
-      "age_seconds": 633.3,
-      "open": 19.15,
-      "high": 19.15,
-      "low": 19.0,
-      "volume": 22346,
+      "age_seconds": 1195.3,
       "sample_count": 1,
       "samples": [
         {
           "sample": 1,
           "query_date": "2026-08-28",
-          "query_time": "13:40:31",
+          "query_time": "13:49:43",
           "trade_date": "2026-08-28",
           "trade_time": "13:30:00",
           "z": "19.0500",
@@ -46,22 +42,18 @@
       "last_error": null
     },
     "3019": {
-      "status": "PASS",
+      "status": "FAIL_STALE_TRADE",
       "name": "亞光",
       "price": 138.5,
       "trade_date": "2026-08-28",
       "trade_time": "13:30:00",
-      "age_seconds": 656.2,
-      "open": 140.5,
-      "high": 140.5,
-      "low": 136.5,
-      "volume": 2423,
+      "age_seconds": 1198.5,
       "sample_count": 1,
       "samples": [
         {
           "sample": 1,
           "query_date": "2026-08-28",
-          "query_time": "13:40:56",
+          "query_time": "13:48:48",
           "trade_date": "2026-08-28",
           "trade_time": "13:30:00",
           "z": "138.5000",
@@ -78,6 +70,7 @@
       "first_date": "2023-06-01",
       "last_date": "2026-08-27",
       "expected_latest_completed_date": "2026-08-27",
+      "latest_day_crosscheck_status": "PASS",
       "path_status": "PASS",
       "freshness_status": "PASS",
       "history_gate": "PASS",
@@ -93,6 +86,7 @@
       "first_date": "2023-06-01",
       "last_date": "2026-08-27",
       "expected_latest_completed_date": "2026-08-27",
+      "latest_day_crosscheck_status": "PASS",
       "path_status": "PASS",
       "freshness_status": "PASS",
       "history_gate": "PASS",
@@ -297,19 +291,7 @@
         "macd_histogram": -0.015012584947636007,
         "atr14": 0.3459873349983519
       },
-      "technical_intraday_estimate": {
-        "date": "2026-08-28",
-        "ma5": 19.16,
-        "ma20": 19.1675,
-        "ma60": 18.89111255,
-        "ma120": 18.95073408333333,
-        "ma240": 18.958428225,
-        "rsi14": 49.15163767363627,
-        "macd": 0.06885616755497637,
-        "macd_signal": 0.09446761610925333,
-        "macd_histogram": -0.025611448554276967,
-        "atr14": 0.3319882396413267
-      },
+      "technical_intraday_estimate": null,
       "horizon_statistics": {
         "10": {
           "samples": 778,
@@ -592,19 +574,7 @@
         "macd_histogram": 0.4034434021258355,
         "atr14": 5.992395964593224
       },
-      "technical_intraday_estimate": {
-        "date": "2026-08-28",
-        "ma5": 135.7,
-        "ma20": 135.5,
-        "ma60": 140.18339701666667,
-        "ma120": 136.53615708333334,
-        "ma240": 139.9320753416667,
-        "rsi14": 53.6452587119044,
-        "macd": 0.019572080145195514,
-        "macd_signal": -0.4959268330535548,
-        "macd_histogram": 0.5154989131987503,
-        "atr14": 5.8500819671222795
-      },
+      "technical_intraday_estimate": null,
       "horizon_statistics": {
         "10": {
           "samples": 778,

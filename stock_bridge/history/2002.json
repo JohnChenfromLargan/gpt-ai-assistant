@@ -7,6 +7,7 @@
     "first_date": "2023-06-01",
     "last_date": "2026-08-27",
     "expected_latest_completed_date": "2026-08-27",
+    "latest_day_crosscheck_status": "PASS",
     "path_status": "PASS",
     "freshness_status": "PASS",
     "history_gate": "PASS",
