@@ -16,10 +16,12 @@ on:
       - 'stock_bridge/**'
       - '.github/workflows/twse-stock-bridge.yml'
   schedule:
-    # Run 15 minutes before the ChatGPT checks, explicitly in Asia/Taipei.
-    # Updating cron on the default branch also re-registers a disabled schedule.
-    - cron: '15 9,10,11 * * 1-5'
-      timezone: 'Asia/Taipei'
+    # GitHub cron uses UTC. Taiwan is UTC+8 without DST.
+    # Primary: 09:18, 10:18, 11:18 Asia/Taipei.
+    - cron: '18 1,2,3 * * 1-5'
+    # Fallback: 09:23, 10:23, 11:23 Asia/Taipei.
+    # It skips the full build when the primary run has already published fresh data.
+    - cron: '23 1,2,3 * * 1-5'
 
 permissions:
   contents: write
@@ -34,12 +36,64 @@ jobs:
     timeout-minutes: 20
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.12'
+
+      - name: Decide whether refresh is needed
+        id: refresh
+        run: |
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          import os
+          from datetime import datetime
+          from pathlib import Path
+
+          event = os.environ.get('GITHUB_EVENT_NAME', '')
+          if event != 'schedule':
+              print('run_build=true')
+              print(f'reason={event or "unknown_event"}')
+              print('age_seconds=-1')
+              raise SystemExit(0)
+
+          try:
+              data = json.loads(Path('stock_bridge/latest.json').read_text(encoding='utf-8'))
+              generated_at = data.get('generated_at')
+              market_date = data.get('market_date')
+              if not generated_at:
+                  raise ValueError('generated_at is missing')
+              timestamp = datetime.fromisoformat(generated_at.replace('Z', '+00:00'))
+              if timestamp.tzinfo is None:
+                  raise ValueError('generated_at is not timezone-aware')
+              now = datetime.now(timestamp.tzinfo)
+              age_seconds = (now - timestamp).total_seconds()
+              same_market_date = market_date == now.date().isoformat()
+              # The second cron is a fallback. Skip it only when a primary run
+              # has already published same-day data within the last 8 minutes.
+              fresh = same_market_date and -120 <= age_seconds <= 8 * 60
+              print(f'run_build={str(not fresh).lower()}')
+              print(f'reason={"recent_primary_refresh" if fresh else "stale_or_missing"}')
+              print(f'age_seconds={int(age_seconds)}')
+          except Exception as exc:
+              print('run_build=true')
+              print('reason=precheck_error')
+              print('age_seconds=-1')
+              print(f'Precheck error: {type(exc).__name__}: {exc}', file=os.sys.stderr)
+          PY
+
+      - name: Record refresh decision
+        run: |
+          {
+            echo "### TWSE Bridge refresh decision"
+            echo "- event: ${{ github.event_name }}"
+            echo "- schedule: ${{ github.event.schedule || 'n/a' }}"
+            echo "- run_build: ${{ steps.refresh.outputs.run_build }}"
+            echo "- reason: ${{ steps.refresh.outputs.reason }}"
+            echo "- previous_data_age_seconds: ${{ steps.refresh.outputs.age_seconds }}"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Self tests
         run: |
@@ -47,6 +101,7 @@ jobs:
           python stock_bridge/phase2_fixed.py --self-test
 
       - name: Corporate action source smoke
+        if: steps.refresh.outputs.run_build == 'true'
         run: |
           python - <<'PY'
           import json, urllib.request
@@ -63,12 +118,15 @@ jobs:
           PY
 
       - name: Build Phase 1 market data
+        if: steps.refresh.outputs.run_build == 'true'
         run: python stock_bridge/bridge.py
 
       - name: Build Phase 2 analytics
+        if: steps.refresh.outputs.run_build == 'true'
         run: python stock_bridge/phase2_fixed.py
 
       - name: Validate generated JSON and analytics gates
+        if: steps.refresh.outputs.run_build == 'true'
         run: |
           python - <<'PY'
           import json
@@ -113,7 +171,7 @@ jobs:
           PY
 
       - name: Commit refreshed data
-        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        if: steps.refresh.outputs.run_build == 'true' && github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
