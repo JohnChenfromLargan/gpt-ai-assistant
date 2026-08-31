@@ -1,6 +1,6 @@
 {
   "schema_version": "2.0",
-  "generated_at": "2026-08-31T14:05:29+08:00",
+  "generated_at": "2026-08-31T14:22:38+08:00",
   "market_date": "2026-08-31",
   "source": {
     "primary": "TWSE",
@@ -26,13 +26,13 @@
       "price": 18.95,
       "trade_date": "2026-08-31",
       "trade_time": "13:30:00",
-      "age_seconds": 2146.2,
+      "age_seconds": 3167.1,
       "sample_count": 1,
       "samples": [
         {
           "sample": 1,
           "query_date": "2026-08-31",
-          "query_time": "14:04:32",
+          "query_time": "14:22:45",
           "trade_date": "2026-08-31",
           "trade_time": "13:30:00",
           "z": "18.9500",
@@ -47,13 +47,13 @@
       "price": 143.0,
       "trade_date": "2026-08-31",
       "trade_time": "13:30:00",
-      "age_seconds": 2149.5,
+      "age_seconds": 3169.6,
       "sample_count": 1,
       "samples": [
         {
           "sample": 1,
           "query_date": "2026-08-31",
-          "query_time": "14:05:12",
+          "query_time": "14:22:49",
           "trade_date": "2026-08-31",
           "trade_time": "13:30:00",
           "z": "143.0000",
