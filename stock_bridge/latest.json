@@ -1,7 +1,7 @@
 {
   "schema_version": "2.0",
-  "generated_at": "2026-08-28T13:49:52+08:00",
-  "market_date": "2026-08-28",
+  "generated_at": "2026-08-31T10:20:04+08:00",
+  "market_date": "2026-08-31",
   "source": {
     "primary": "TWSE",
     "quote": "TWSE MIS getStockInfo.jsp",
@@ -21,43 +21,167 @@
   },
   "quotes": {
     "2002": {
-      "status": "FAIL_STALE_TRADE",
+      "status": "FAIL_NO_RECENT_TRADE",
       "name": "中鋼",
-      "price": 19.05,
-      "trade_date": "2026-08-28",
-      "trade_time": "13:30:00",
-      "age_seconds": 1195.3,
-      "sample_count": 1,
+      "price": null,
+      "trade_date": null,
+      "trade_time": null,
+      "sample_count": 8,
       "samples": [
         {
           "sample": 1,
-          "query_date": "2026-08-28",
-          "query_time": "13:49:43",
-          "trade_date": "2026-08-28",
-          "trade_time": "13:30:00",
-          "z": "19.0500",
-          "volume": 22346
+          "query_date": "2026-08-31",
+          "query_time": "10:20:06",
+          "trade_date": "2026-08-31",
+          "trade_time": "10:19:59",
+          "z": "-",
+          "volume": 8832
+        },
+        {
+          "sample": 2,
+          "query_date": "2026-08-31",
+          "query_time": "10:20:06",
+          "trade_date": "2026-08-31",
+          "trade_time": "10:19:59",
+          "z": "-",
+          "volume": 8832
+        },
+        {
+          "sample": 3,
+          "query_date": "2026-08-31",
+          "query_time": "10:20:06",
+          "trade_date": "2026-08-31",
+          "trade_time": "10:19:59",
+          "z": "-",
+          "volume": 8832
+        },
+        {
+          "sample": 4,
+          "query_date": "2026-08-31",
+          "query_time": "10:20:06",
+          "trade_date": "2026-08-31",
+          "trade_time": "10:19:59",
+          "z": "-",
+          "volume": 8832
+        },
+        {
+          "sample": 5,
+          "query_date": "2026-08-31",
+          "query_time": "10:20:06",
+          "trade_date": "2026-08-31",
+          "trade_time": "10:19:59",
+          "z": "-",
+          "volume": 8832
+        },
+        {
+          "sample": 6,
+          "query_date": "2026-08-31",
+          "query_time": "10:20:06",
+          "trade_date": "2026-08-31",
+          "trade_time": "10:19:59",
+          "z": "-",
+          "volume": 8832
+        },
+        {
+          "sample": 7,
+          "query_date": "2026-08-31",
+          "query_time": "10:20:44",
+          "trade_date": "2026-08-31",
+          "trade_time": "10:20:39",
+          "z": "-",
+          "volume": 8850
+        },
+        {
+          "sample": 8,
+          "query_date": "2026-08-31",
+          "query_time": "10:20:44",
+          "trade_date": "2026-08-31",
+          "trade_time": "10:20:39",
+          "z": "-",
+          "volume": 8850
         }
       ],
       "last_error": null
     },
     "3019": {
-      "status": "FAIL_STALE_TRADE",
+      "status": "FAIL_NO_RECENT_TRADE",
       "name": "亞光",
-      "price": 138.5,
-      "trade_date": "2026-08-28",
-      "trade_time": "13:30:00",
-      "age_seconds": 1198.5,
-      "sample_count": 1,
+      "price": null,
+      "trade_date": null,
+      "trade_time": null,
+      "sample_count": 8,
       "samples": [
         {
           "sample": 1,
-          "query_date": "2026-08-28",
-          "query_time": "13:48:48",
-          "trade_date": "2026-08-28",
-          "trade_time": "13:30:00",
-          "z": "138.5000",
-          "volume": 2423
+          "query_date": "2026-08-31",
+          "query_time": "10:20:17",
+          "trade_date": "2026-08-31",
+          "trade_time": "10:20:05",
+          "z": "-",
+          "volume": 1447
+        },
+        {
+          "sample": 2,
+          "query_date": "2026-08-31",
+          "query_time": "10:20:17",
+          "trade_date": "2026-08-31",
+          "trade_time": "10:20:05",
+          "z": "-",
+          "volume": 1447
+        },
+        {
+          "sample": 3,
+          "query_date": "2026-08-31",
+          "query_time": "10:20:17",
+          "trade_date": "2026-08-31",
+          "trade_time": "10:20:05",
+          "z": "-",
+          "volume": 1447
+        },
+        {
+          "sample": 4,
+          "query_date": "2026-08-31",
+          "query_time": "10:20:17",
+          "trade_date": "2026-08-31",
+          "trade_time": "10:20:05",
+          "z": "-",
+          "volume": 1447
+        },
+        {
+          "sample": 5,
+          "query_date": "2026-08-31",
+          "query_time": "10:20:17",
+          "trade_date": "2026-08-31",
+          "trade_time": "10:20:05",
+          "z": "-",
+          "volume": 1447
+        },
+        {
+          "sample": 6,
+          "query_date": "2026-08-31",
+          "query_time": "10:20:17",
+          "trade_date": "2026-08-31",
+          "trade_time": "10:20:05",
+          "z": "-",
+          "volume": 1447
+        },
+        {
+          "sample": 7,
+          "query_date": "2026-08-31",
+          "query_time": "10:20:17",
+          "trade_date": "2026-08-31",
+          "trade_time": "10:20:05",
+          "z": "-",
+          "volume": 1447
+        },
+        {
+          "sample": 8,
+          "query_date": "2026-08-31",
+          "query_time": "10:20:17",
+          "trade_date": "2026-08-31",
+          "trade_time": "10:20:05",
+          "z": "-",
+          "volume": 1447
         }
       ],
       "last_error": null
@@ -66,10 +190,10 @@
   "history": {
     "2002": {
       "name": "中鋼",
-      "count": 788,
+      "count": 789,
       "first_date": "2023-06-01",
-      "last_date": "2026-08-27",
-      "expected_latest_completed_date": "2026-08-27",
+      "last_date": "2026-08-28",
+      "expected_latest_completed_date": "2026-08-28",
       "latest_day_crosscheck_status": "PASS",
       "path_status": "PASS",
       "freshness_status": "PASS",
@@ -82,10 +206,10 @@
     },
     "3019": {
       "name": "亞光",
-      "count": 788,
+      "count": 789,
       "first_date": "2023-06-01",
-      "last_date": "2026-08-27",
-      "expected_latest_completed_date": "2026-08-27",
+      "last_date": "2026-08-28",
+      "expected_latest_completed_date": "2026-08-28",
       "latest_day_crosscheck_status": "PASS",
       "path_status": "PASS",
       "freshness_status": "PASS",
@@ -155,7 +279,7 @@
             "CAPITAL_REDUCTION": 0
           },
           "source_market_rows": {
-            "EX_RIGHT_DIVIDEND": 4681,
+            "EX_RIGHT_DIVIDEND": 4692,
             "CAPITAL_REDUCTION": 57
           },
           "status_samples": {
@@ -203,10 +327,10 @@
                 ]
               },
               {
-                "range": "20260531-20260827",
+                "range": "20260531-20260828",
                 "endpoint": "https://www.twse.com.tw/rwd/zh/exRight/TWT49U",
                 "stat": "OK",
-                "market_rows": 872,
+                "market_rows": 883,
                 "fields": [
                   "資料日期",
                   "股票代號",
@@ -261,7 +385,7 @@
                 ]
               },
               {
-                "range": "20260531-20260827",
+                "range": "20260531-20260828",
                 "endpoint": "https://www.twse.com.tw/exchangeReport/TWTAUU",
                 "stat": "OK",
                 "market_rows": 3,
@@ -279,89 +403,89 @@
         }
       },
       "technical_completed_day": {
-        "date": "2026-08-27",
-        "ma5": 19.240000000000002,
-        "ma20": 19.1625,
-        "ma60": 18.894406616666668,
-        "ma120": 18.95651505833333,
-        "ma240": 18.9615254125,
-        "rsi14": 51.240877539566284,
-        "macd": 0.08585789330018656,
-        "macd_signal": 0.10087047824782257,
-        "macd_histogram": -0.015012584947636007,
-        "atr14": 0.3459873349983519
+        "date": "2026-08-28",
+        "ma5": 19.16,
+        "ma20": 19.1675,
+        "ma60": 18.89111255,
+        "ma120": 18.95073408333333,
+        "ma240": 18.958428225,
+        "rsi14": 49.15163767363627,
+        "macd": 0.06885616755497637,
+        "macd_signal": 0.09446761610925333,
+        "macd_histogram": -0.025611448554276967,
+        "atr14": 0.3319882396413267
       },
       "technical_intraday_estimate": null,
       "horizon_statistics": {
         "10": {
-          "samples": 778,
-          "p10_pct": -5.154782322724616,
-          "p25_pct": -3.0409945371520446,
-          "median_pct": -0.6753072467669652,
-          "p75_pct": 1.827973074085415,
-          "p90_pct": 5.081571401595289,
-          "mean_pct": -0.3917350768450122,
-          "positive_probability": 0.39845758354755784
+          "samples": 779,
+          "p10_pct": -5.15407899945236,
+          "p25_pct": -3.040843241276309,
+          "median_pct": -0.6726483674558081,
+          "p75_pct": 1.823487045268457,
+          "p90_pct": 5.081118184297737,
+          "mean_pct": -0.3908943926709662,
+          "positive_probability": 0.3992297817715019
         },
         "20": {
-          "samples": 768,
-          "p10_pct": -7.866461338892878,
-          "p25_pct": -4.864862917400989,
-          "median_pct": -1.323257450143367,
-          "p75_pct": 2.7474326004427505,
-          "p90_pct": 5.776954515118016,
-          "mean_pct": -0.7814656868731138,
-          "positive_probability": 0.3997395833333333
+          "samples": 769,
+          "p10_pct": -7.866029922682276,
+          "p25_pct": -4.848483217296895,
+          "median_pct": -1.3207560085016445,
+          "p75_pct": 2.747251104110582,
+          "p90_pct": 5.763870386558582,
+          "mean_pct": -0.7797632549194581,
+          "positive_probability": 0.40052015604681407
         },
         "22": {
-          "samples": 766,
-          "p10_pct": -8.219191887071087,
-          "p25_pct": -4.8929341118031875,
-          "median_pct": -1.5564442141305923,
-          "p75_pct": 2.90055329987583,
-          "p90_pct": 6.2128866990293075,
-          "mean_pct": -0.867624919622892,
-          "positive_probability": 0.40339425587467365
+          "samples": 767,
+          "p10_pct": -8.21714483980422,
+          "p25_pct": -4.889442728859006,
+          "median_pct": -1.5503876776568282,
+          "p75_pct": 2.891057089766602,
+          "p90_pct": 6.205463695701734,
+          "mean_pct": -0.8658057157048854,
+          "positive_probability": 0.4041720990873533
         },
         "40": {
-          "samples": 748,
-          "p10_pct": -10.518073202538995,
-          "p25_pct": -7.18314690396904,
-          "median_pct": -3.033590443693146,
-          "p75_pct": 2.689005077868545,
-          "p90_pct": 8.577024411299165,
-          "mean_pct": -1.709881990682193,
-          "positive_probability": 0.36363636363636365
+          "samples": 749,
+          "p10_pct": -10.516895834959087,
+          "p25_pct": -7.178215092278406,
+          "median_pct": -3.0303059879514205,
+          "p75_pct": 2.6915091643346267,
+          "p90_pct": 8.563544763353558,
+          "mean_pct": -1.703286606898167,
+          "positive_probability": 0.3644859813084112
         },
         "60": {
-          "samples": 728,
-          "p10_pct": -12.317373665475586,
-          "p25_pct": -7.9614348879673615,
-          "median_pct": -2.8069483617685798,
-          "p75_pct": 2.4460738849534094,
-          "p90_pct": 7.333901338001573,
-          "mean_pct": -2.696046720616975,
-          "positive_probability": 0.3598901098901099
+          "samples": 729,
+          "p10_pct": -12.316673579077703,
+          "p25_pct": -7.951807743919703,
+          "median_pct": -2.806119261199924,
+          "p75_pct": 2.4439930946402066,
+          "p90_pct": 7.3180774853200985,
+          "mean_pct": -2.6937570100995556,
+          "positive_probability": 0.35939643347050754
         },
         "120": {
-          "samples": 668,
-          "p10_pct": -13.288445550309802,
+          "samples": 669,
+          "p10_pct": -13.269664546801057,
           "p25_pct": -10.08968874680839,
-          "median_pct": -6.788813354942641,
-          "p75_pct": -0.20336069704361692,
-          "p90_pct": 3.6220931288245843,
-          "mean_pct": -5.27776207652304,
-          "positive_probability": 0.23652694610778444
+          "median_pct": -6.759445332830005,
+          "p75_pct": -0.204078252138451,
+          "p90_pct": 3.6049342002006393,
+          "mean_pct": -5.275125076276571,
+          "positive_probability": 0.23617339312406577
         },
         "240": {
-          "samples": 548,
-          "p10_pct": -19.5108789383246,
-          "p25_pct": -17.747127615684384,
-          "median_pct": -13.245885551723969,
-          "p75_pct": -4.76230213673563,
-          "p90_pct": 0.15612255124895433,
-          "mean_pct": -11.441921681257258,
-          "positive_probability": 0.11313868613138686
+          "samples": 549,
+          "p10_pct": -19.50606292675734,
+          "p25_pct": -17.740587519600115,
+          "median_pct": -13.164158732606946,
+          "p75_pct": -4.691392816723017,
+          "p90_pct": 0.1523652147875372,
+          "mean_pct": -11.427920790585915,
+          "positive_probability": 0.11293260473588343
         },
         "current_20d_range": {
           "low": 18.85,
@@ -438,7 +562,7 @@
             "CAPITAL_REDUCTION": 0
           },
           "source_market_rows": {
-            "EX_RIGHT_DIVIDEND": 4681,
+            "EX_RIGHT_DIVIDEND": 4692,
             "CAPITAL_REDUCTION": 57
           },
           "status_samples": {
@@ -486,10 +610,10 @@
                 ]
               },
               {
-                "range": "20260531-20260827",
+                "range": "20260531-20260828",
                 "endpoint": "https://www.twse.com.tw/rwd/zh/exRight/TWT49U",
                 "stat": "OK",
-                "market_rows": 872,
+                "market_rows": 883,
                 "fields": [
                   "資料日期",
                   "股票代號",
@@ -544,7 +668,7 @@
                 ]
               },
               {
-                "range": "20260531-20260827",
+                "range": "20260531-20260828",
                 "endpoint": "https://www.twse.com.tw/exchangeReport/TWTAUU",
                 "stat": "OK",
                 "market_rows": 3,
@@ -562,92 +686,92 @@
         }
       },
       "technical_completed_day": {
-        "date": "2026-08-27",
-        "ma5": 135.1,
-        "ma20": 134.975,
-        "ma60": 140.32608278333333,
-        "ma120": 136.46189487499998,
-        "ma240": 140.000103475,
-        "rsi14": 52.9683876080656,
-        "macd": -0.22135815922740676,
-        "macd_signal": -0.6248015613532423,
-        "macd_histogram": 0.4034434021258355,
-        "atr14": 5.992395964593224
+        "date": "2026-08-28",
+        "ma5": 135.7,
+        "ma20": 135.5,
+        "ma60": 140.18339701666667,
+        "ma120": 136.53615708333334,
+        "ma240": 139.9320753416667,
+        "rsi14": 53.6452587119044,
+        "macd": 0.019572080145195514,
+        "macd_signal": -0.4959268330535548,
+        "macd_histogram": 0.5154989131987503,
+        "atr14": 5.8500819671222795
       },
       "technical_intraday_estimate": null,
       "horizon_statistics": {
         "10": {
-          "samples": 778,
-          "p10_pct": -7.856615928661212,
-          "p25_pct": -3.590667809390899,
-          "median_pct": 0.887581360967904,
-          "p75_pct": 4.510626714390581,
-          "p90_pct": 10.494594695388129,
-          "mean_pct": 1.5263575538221574,
-          "positive_probability": 0.5526992287917738
+          "samples": 779,
+          "p10_pct": -7.8496840816988795,
+          "p25_pct": -3.5885217461969097,
+          "median_pct": 0.8902072683005136,
+          "p75_pct": 4.4829112222995455,
+          "p90_pct": 10.484768131969021,
+          "mean_pct": 1.5258036808531288,
+          "positive_probability": 0.5532734274711169
         },
         "20": {
-          "samples": 768,
-          "p10_pct": -11.346466942670705,
-          "p25_pct": -4.602037785866569,
-          "median_pct": 1.083258413484589,
-          "p75_pct": 7.1991250698969385,
-          "p90_pct": 21.10776453668563,
-          "mean_pct": 3.0648812472284903,
-          "positive_probability": 0.5442708333333334
+          "samples": 769,
+          "p10_pct": -11.329538241942373,
+          "p25_pct": -4.599407391422949,
+          "median_pct": 1.098901132075314,
+          "p75_pct": 7.233713788715157,
+          "p90_pct": 21.082425082624635,
+          "mean_pct": 3.0715629686235117,
+          "positive_probability": 0.5448634590377113
         },
         "22": {
-          "samples": 766,
-          "p10_pct": -11.64420824012255,
-          "p25_pct": -4.774285835749453,
-          "median_pct": 0.6294915131961232,
-          "p75_pct": 7.943116893333318,
-          "p90_pct": 22.540483397809318,
-          "mean_pct": 3.353618768742468,
-          "positive_probability": 0.5274151436031331
+          "samples": 767,
+          "p10_pct": -11.642952732721007,
+          "p25_pct": -4.772452336443078,
+          "median_pct": 0.6359298329420504,
+          "p75_pct": 8.062074152587396,
+          "p90_pct": 22.53037872466713,
+          "mean_pct": 3.365676144554095,
+          "positive_probability": 0.5280312907431551
         },
         "40": {
-          "samples": 748,
-          "p10_pct": -12.975401178178133,
-          "p25_pct": -6.982497505677457,
-          "median_pct": 0.6235417815408484,
-          "p75_pct": 13.15324040497241,
-          "p90_pct": 38.62993306426395,
-          "mean_pct": 6.53398090520893,
-          "positive_probability": 0.516042780748663
+          "samples": 749,
+          "p10_pct": -12.97072564665325,
+          "p25_pct": -7.120743624256953,
+          "median_pct": 0.6220837758345477,
+          "p75_pct": 13.147409933417297,
+          "p90_pct": 38.55090783329829,
+          "mean_pct": 6.515433721714961,
+          "positive_probability": 0.5153538050734312
         },
         "60": {
-          "samples": 728,
-          "p10_pct": -14.250467614437762,
-          "p25_pct": -6.5321139426385875,
-          "median_pct": 2.3810624108650313,
-          "p75_pct": 17.866304577444165,
-          "p90_pct": 53.46313456070849,
-          "mean_pct": 10.166984423584054,
-          "positive_probability": 0.5494505494505495
+          "samples": 729,
+          "p10_pct": -14.247473836099541,
+          "p25_pct": -6.525249450456839,
+          "median_pct": 2.364864709660064,
+          "p75_pct": 17.7536234696994,
+          "p90_pct": 53.37036032423677,
+          "mean_pct": 10.145052363548391,
+          "positive_probability": 0.5486968449931413
         },
         "120": {
-          "samples": 668,
-          "p10_pct": -15.077528695424865,
-          "p25_pct": -0.02848562421066403,
-          "median_pct": 6.526695469784228,
-          "p75_pct": 31.878459229606285,
-          "p90_pct": 76.12676139475406,
-          "mean_pct": 20.878480488765423,
-          "positive_probability": 0.7470059880239521
+          "samples": 669,
+          "p10_pct": -15.0453245181141,
+          "p25_pct": 0.0,
+          "median_pct": 6.545453976043891,
+          "p75_pct": 31.87659319554641,
+          "p90_pct": 76.12214843633083,
+          "mean_pct": 20.857551128914547,
+          "positive_probability": 0.7473841554559043
         },
         "240": {
-          "samples": 548,
-          "p10_pct": -12.33233627110804,
-          "p25_pct": 7.1964659875435375,
-          "median_pct": 43.41973848158099,
-          "p75_pct": 94.70866425638988,
-          "p90_pct": 140.988230210367,
-          "mean_pct": 55.1218976696561,
-          "positive_probability": 0.8193430656934306
+          "samples": 549,
+          "p10_pct": -12.324413451740439,
+          "p25_pct": 6.69489888043,
+          "median_pct": 43.331181836867415,
+          "p75_pct": 94.52449524079458,
+          "p90_pct": 140.98468162598382,
+          "mean_pct": 55.00228551536641,
+          "positive_probability": 0.8178506375227687
         },
         "current_20d_range": {
-          "low": 128.0,
+          "low": 129.5,
           "high": 141.0
         },
         "current_60d_range": {

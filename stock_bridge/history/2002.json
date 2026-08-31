@@ -3,10 +3,10 @@
   "name": "中鋼",
   "meta": {
     "name": "中鋼",
-    "count": 788,
+    "count": 789,
     "first_date": "2023-06-01",
-    "last_date": "2026-08-27",
-    "expected_latest_completed_date": "2026-08-27",
+    "last_date": "2026-08-28",
+    "expected_latest_completed_date": "2026-08-28",
     "latest_day_crosscheck_status": "PASS",
     "path_status": "PASS",
     "freshness_status": "PASS",
@@ -6321,6 +6321,14 @@
       "high": 19.35,
       "low": 19.1,
       "close": 19.15
+    },
+    {
+      "date": "2026-08-28",
+      "volume": 22552912,
+      "open": 19.15,
+      "high": 19.15,
+      "low": 19.0,
+      "close": 19.05
     }
   ]
 }
