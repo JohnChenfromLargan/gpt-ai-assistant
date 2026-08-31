@@ -16,8 +16,10 @@ on:
       - 'stock_bridge/**'
       - '.github/workflows/twse-stock-bridge.yml'
   schedule:
-    # GitHub cron is UTC. These correspond to 09:20, 10:20, 11:20 Asia/Taipei.
-    - cron: '20 1,2,3 * * 1-5'
+    # Run 15 minutes before the ChatGPT checks, explicitly in Asia/Taipei.
+    # Updating cron on the default branch also re-registers a disabled schedule.
+    - cron: '15 9,10,11 * * 1-5'
+      timezone: 'Asia/Taipei'
 
 permissions:
   contents: write
