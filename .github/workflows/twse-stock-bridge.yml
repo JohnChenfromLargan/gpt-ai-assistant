@@ -1,4 +1,4 @@
-name: TWSE Stock Bridge
+name: TWSE Stock Bridge Source CI
 
 on:
   workflow_dispatch:
@@ -7,6 +7,8 @@ on:
       - main
     paths:
       - 'stock_bridge/bridge.py'
+      - 'stock_bridge/bridge_quote_layer.py'
+      - 'stock_bridge/bridge_quote_layer_v2.py'
       - 'stock_bridge/phase2.py'
       - 'stock_bridge/phase2_fixed.py'
       - 'stock_bridge/README.md'
@@ -15,27 +17,23 @@ on:
     paths:
       - 'stock_bridge/**'
       - '.github/workflows/twse-stock-bridge.yml'
-  schedule:
-    # GitHub cron uses UTC. Taiwan is UTC+8 without DST.
-    # Primary: 09:18, 10:18, 11:18 Asia/Taipei.
-    - cron: '18 1,2,3 * * 1-5'
-    # Fallback: 09:23, 10:23, 11:23 Asia/Taipei.
-    # It skips the full build when the primary run has already published fresh data.
-    - cron: '23 1,2,3 * * 1-5'
 
+# Production publishing is owned by the non-fork repository
+# JohnChenfromLargan/desktop-tutorial. This workflow validates source only.
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
-  group: twse-stock-bridge
+  group: twse-stock-bridge-source-ci-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   validate:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+
     steps:
-      - name: Checkout
+      - name: Checkout source repository
         uses: actions/checkout@v5
 
       - name: Set up Python
@@ -43,65 +41,15 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Decide whether refresh is needed
-        id: refresh
-        run: |
-          python - <<'PY' >> "$GITHUB_OUTPUT"
-          import json
-          import os
-          from datetime import datetime
-          from pathlib import Path
-
-          event = os.environ.get('GITHUB_EVENT_NAME', '')
-          if event != 'schedule':
-              print('run_build=true')
-              print(f'reason={event or "unknown_event"}')
-              print('age_seconds=-1')
-              raise SystemExit(0)
-
-          try:
-              data = json.loads(Path('stock_bridge/latest.json').read_text(encoding='utf-8'))
-              generated_at = data.get('generated_at')
-              market_date = data.get('market_date')
-              if not generated_at:
-                  raise ValueError('generated_at is missing')
-              timestamp = datetime.fromisoformat(generated_at.replace('Z', '+00:00'))
-              if timestamp.tzinfo is None:
-                  raise ValueError('generated_at is not timezone-aware')
-              now = datetime.now(timestamp.tzinfo)
-              age_seconds = (now - timestamp).total_seconds()
-              same_market_date = market_date == now.date().isoformat()
-              # The second cron is a fallback. Skip it only when a primary run
-              # has already published same-day data within the last 8 minutes.
-              fresh = same_market_date and -120 <= age_seconds <= 8 * 60
-              print(f'run_build={str(not fresh).lower()}')
-              print(f'reason={"recent_primary_refresh" if fresh else "stale_or_missing"}')
-              print(f'age_seconds={int(age_seconds)}')
-          except Exception as exc:
-              print('run_build=true')
-              print('reason=precheck_error')
-              print('age_seconds=-1')
-              print(f'Precheck error: {type(exc).__name__}: {exc}', file=os.sys.stderr)
-          PY
-
-      - name: Record refresh decision
-        run: |
-          {
-            echo "### TWSE Bridge refresh decision"
-            echo "- event: ${{ github.event_name }}"
-            echo "- schedule: ${{ github.event.schedule || 'n/a' }}"
-            echo "- run_build: ${{ steps.refresh.outputs.run_build }}"
-            echo "- reason: ${{ steps.refresh.outputs.reason }}"
-            echo "- previous_data_age_seconds: ${{ steps.refresh.outputs.age_seconds }}"
-          } >> "$GITHUB_STEP_SUMMARY"
-
       - name: Self tests
         run: |
           python stock_bridge/bridge.py --self-test
+          python stock_bridge/bridge_quote_layer.py --self-test
+          python stock_bridge/bridge_quote_layer_v2.py --self-test
           python stock_bridge/phase2_fixed.py --self-test
 
       - name: Corporate action source smoke
-        if: steps.refresh.outputs.run_build == 'true'
+        if: github.event_name != 'pull_request'
         run: |
           python - <<'PY'
           import json, urllib.request
@@ -113,72 +61,59 @@ jobs:
           rows = data.get('data') or []
           code_idx = fields.index('股票代號') if '股票代號' in fields else None
           hits = [r for r in rows if code_idx is not None and str(r[code_idx]).strip() == '2002']
-          assert hits, 'TWSE corporate-action smoke failed: 2002 not found on official 2026-07-24 ex-dividend date'
+          assert hits, 'TWSE corporate-action smoke failed: 2002 not found on 2026-07-24'
           print('CORPORATE_ACTION_SOURCE_SMOKE_PASS')
           PY
 
-      - name: Build Phase 1 market data
-        if: steps.refresh.outputs.run_build == 'true'
-        run: python stock_bridge/bridge.py
+      - name: Build Phase 1 integration payload
+        if: github.event_name != 'pull_request'
+        env:
+          TWSE_QUOTE_CACHE_PATH: ${{ runner.temp }}/twse-quote-cache.json
+        run: python stock_bridge/bridge_quote_layer_v2.py
 
       - name: Build Phase 2 analytics
-        if: steps.refresh.outputs.run_build == 'true'
+        if: github.event_name != 'pull_request'
         run: python stock_bridge/phase2_fixed.py
 
-      - name: Validate generated JSON and analytics gates
-        if: steps.refresh.outputs.run_build == 'true'
+      - name: Validate integration payload
+        if: github.event_name != 'pull_request'
         run: |
           python - <<'PY'
           import json
           from pathlib import Path
-          p = Path('stock_bridge/latest.json')
-          data = json.loads(p.read_text(encoding='utf-8'))
+
+          data = json.loads(Path('stock_bridge/latest.json').read_text(encoding='utf-8'))
           assert data['schema_version'] == '2.0'
+          assert data.get('generated_at')
+          assert data.get('market_date')
           assert set(data['quotes']) == {'2002', '3019'}
           assert set(data['history']) == {'2002', '3019'}
           assert set(data['analytics']) == {'2002', '3019'}
-          assert data['generated_at'] is not None
-          # Quote availability is live market state, not a CI correctness condition.
-          # Publish explicit PASS/FAIL quote status and let the ChatGPT quote Gate decide.
-          assert isinstance(data['bridge']['transport_ready'], bool)
-          allowed_quote = {'PASS', 'FAIL_STALE_TRADE', 'FAIL_NO_RECENT_TRADE', 'FAIL_NETWORK'}
-          for symbol in ('2002', '3019'):
-              assert data['quotes'][symbol].get('status') in allowed_quote
           assert data['bridge']['analysis_ready'] is True
+          cache_meta = data['bridge'].get('quote_cache') or {}
+          assert cache_meta.get('mode') == 'COMBINED_DEPHASED_MIS_POLLING'
+          assert cache_meta.get('combined_request') is True
+          assert cache_meta.get('max_age_seconds') == 900
+          allowed = {'PASS', 'FAIL_STALE_TRADE', 'FAIL_NO_RECENT_TRADE', 'FAIL_NETWORK'}
           for symbol in ('2002', '3019'):
-              h = data['history'][symbol]
-              a = data['analytics'][symbol]
-              assert h['count'] >= 750
-              assert h['history_gate'] == 'PASS'
-              assert h['long_term_750_ready'] is True
-              assert h['price_adjustment_status'] == 'PASS'
-              assert h['integrity_error_count'] == 0
-              assert a['analysis_ready'] is True
-              assert a['corporate_actions']['status'] == 'PASS'
-              assert a['corporate_actions']['fetch_error_count'] == 0
-              assert not a['corporate_actions']['unresolved_discontinuities']
-              t = a['technical_completed_day']
-              for key in ('ma20','ma60','ma120','ma240','rsi14','macd','macd_signal','atr14'):
-                  assert t[key] is not None, (symbol, key)
-              assert a['horizon_statistics']['240']['samples'] > 0
-          events_2002 = data['analytics']['2002']['corporate_actions']['events']
-          assert any(e['date'] == '2026-07-24' and e['kind'] == 'EX_RIGHT_DIVIDEND' for e in events_2002)
-          print('PHASE2_JSON_VALIDATION_PASS')
-          print('bridge=', data.get('bridge'))
-          print('quotes=', {k: v.get('status') for k,v in data['quotes'].items()})
-          print('history_counts=', {k: v.get('count') for k,v in data['history'].items()})
-          print('corporate_actions=', {k: v['corporate_actions']['event_count'] for k,v in data['analytics'].items()})
+              quote = data['quotes'][symbol]
+              assert quote['status'] in allowed
+              if quote['status'] == 'PASS':
+                  assert quote.get('same_msgarray_verified') is True
+                  assert quote.get('price') is not None
+                  assert quote.get('trade_date')
+                  assert quote.get('trade_time')
+                  assert 0 <= quote.get('age_seconds', 10**9) <= 900
+              history = data['history'][symbol]
+              analytics = data['analytics'][symbol]
+              assert history['count'] >= 750
+              assert history['history_gate'] == 'PASS'
+              assert history['long_term_750_ready'] is True
+              assert history['price_adjustment_status'] == 'PASS'
+              assert history['integrity_error_count'] == 0
+              assert analytics['analysis_ready'] is True
+              assert analytics['corporate_actions']['status'] == 'PASS'
+          print('SOURCE_INTEGRATION_VALIDATION_PASS')
+          print('quotes=', {k: v['status'] for k, v in data['quotes'].items()})
+          print('quote_cache=', cache_meta)
           PY
-
-      - name: Commit refreshed data
-        if: steps.refresh.outputs.run_build == 'true' && github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
-        run: |
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add stock_bridge/latest.json stock_bridge/history/*.json
-          if git diff --cached --quiet; then
-            echo 'No generated changes to commit.'
-            exit 0
-          fi
-          git commit -m 'data: refresh TWSE stock bridge'
-          git push
