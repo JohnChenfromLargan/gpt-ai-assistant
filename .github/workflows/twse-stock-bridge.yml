@@ -9,7 +9,6 @@ on:
       - 'stock_bridge/bridge.py'
       - 'stock_bridge/bridge_quote_layer.py'
       - 'stock_bridge/bridge_quote_layer_v2.py'
-      - 'stock_bridge/bridge_quote_layer_v3.py'
       - 'stock_bridge/phase2.py'
       - 'stock_bridge/phase2_fixed.py'
       - 'stock_bridge/README.md'
@@ -47,7 +46,6 @@ jobs:
           python stock_bridge/bridge.py --self-test
           python stock_bridge/bridge_quote_layer.py --self-test
           python stock_bridge/bridge_quote_layer_v2.py --self-test
-          python stock_bridge/bridge_quote_layer_v3.py --self-test
           python stock_bridge/phase2_fixed.py --self-test
 
       - name: Corporate action source smoke
@@ -71,7 +69,7 @@ jobs:
         if: github.event_name != 'pull_request'
         env:
           TWSE_QUOTE_CACHE_PATH: ${{ runner.temp }}/twse-quote-cache.json
-        run: python stock_bridge/bridge_quote_layer_v3.py
+        run: python stock_bridge/bridge_quote_layer_v2.py
 
       - name: Build Phase 2 analytics
         if: github.event_name != 'pull_request'
@@ -93,17 +91,13 @@ jobs:
           assert set(data['analytics']) == {'2002', '3019'}
           assert data['bridge']['analysis_ready'] is True
           cache_meta = data['bridge'].get('quote_cache') or {}
-          assert cache_meta.get('mode') == 'MULTIPATH_COMBINED_AND_SINGLE_MIS'
+          assert cache_meta.get('mode') == 'COMBINED_DEPHASED_MIS_POLLING'
           assert cache_meta.get('combined_request') is True
-          assert cache_meta.get('parallel_sampling') is True
-          assert cache_meta.get('workers') == 3
           assert cache_meta.get('max_age_seconds') == 900
           allowed = {'PASS', 'FAIL_STALE_TRADE', 'FAIL_NO_RECENT_TRADE', 'FAIL_NETWORK'}
           for symbol in ('2002', '3019'):
               quote = data['quotes'][symbol]
               assert quote['status'] in allowed
-              assert quote.get('combined_fetch_status') in allowed
-              assert quote.get('single_fetch_status') in allowed
               if quote['status'] == 'PASS':
                   assert quote.get('same_msgarray_verified') is True
                   assert quote.get('price') is not None
