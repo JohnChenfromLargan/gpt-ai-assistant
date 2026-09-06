@@ -1,4 +1,8 @@
-node_modules
-.vscode
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.vscode/
 .env
 .env.*
