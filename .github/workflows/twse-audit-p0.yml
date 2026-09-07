@@ -24,24 +24,58 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
-      - name: Record exact source and run deterministic self tests only
+      - name: Record baseline and reproduce findings with synthetic inputs
         run: |
-          mkdir -p audit-artifacts/source
-          cp stock_bridge/*.py audit-artifacts/source/
+          mkdir -p audit-artifacts/baseline audit-artifacts/candidate/tests
+          cp stock_bridge/*.py audit-artifacts/baseline/
           git rev-parse HEAD > audit-artifacts/commit.txt
           git ls-tree -r HEAD stock_bridge > audit-artifacts/tree.txt
-          python stock_bridge/bridge.py --self-test
-          python stock_bridge/bridge_quote_layer.py --self-test
-          python stock_bridge/bridge_quote_layer_v2.py --self-test
-          python stock_bridge/phase2_fixed.py --self-test
-      - name: P0 regression tests when present
+          python stock_bridge/audit_p0/baseline_replay.py stock_bridge > audit-artifacts/baseline_results.json
+      - name: Apply candidate only in ephemeral checkout
         run: |
-          if test -f stock_bridge/tests/test_quality_p0.py; then
-            python -m unittest discover -s stock_bridge/tests -v 2>&1 | tee audit-artifacts/tests.log
-          else
-            echo 'BASELINE_CAPTURE_ONLY; no P0 fixes validated' | tee audit-artifacts/tests.log
-          fi
-      - name: Upload verification evidence only
+          python stock_bridge/audit_p0/apply_p0.py stock_bridge
+          git diff -- stock_bridge > audit-artifacts/candidate.patch
+          cp stock_bridge/*.py audit-artifacts/candidate/
+          cp stock_bridge/tests/*.py audit-artifacts/candidate/tests/
+          python -m compileall -q stock_bridge
+      - name: Existing deterministic self tests
+        run: |
+          set -o pipefail
+          {
+            python stock_bridge/bridge.py --self-test
+            python stock_bridge/bridge_quote_layer.py --self-test
+            python stock_bridge/bridge_quote_layer_v2.py --self-test
+            python stock_bridge/phase2_fixed.py --self-test
+          } 2>&1 | tee audit-artifacts/self_tests.log
+      - name: Run candidate regressions with network connections blocked
+        run: |
+          python - <<'PY'
+          import json, socket, sys, unittest
+          from pathlib import Path
+          def no_network(*args, **kwargs):
+              raise RuntimeError('NETWORK_DISABLED_IN_OFFLINE_TESTS')
+          socket.create_connection = no_network
+          socket.socket.connect = no_network
+          suite = unittest.defaultTestLoader.discover('stock_bridge/tests')
+          with Path('audit-artifacts/tests.log').open('w', encoding='utf-8') as log:
+              result = unittest.TextTestRunner(stream=log, verbosity=2).run(suite)
+          report = {
+              'kind': 'DETERMINISTIC_SYNTHETIC_REGRESSION',
+              'tests_run': result.testsRun,
+              'failures': len(result.failures),
+              'errors': len(result.errors),
+              'skipped': len(result.skipped),
+              'success': result.wasSuccessful(),
+              'network_allowed_in_tests': False,
+              'production_published': False,
+              'strategy_backtested': False,
+          }
+          Path('audit-artifacts/results.json').write_text(json.dumps(report, indent=2)+'\n')
+          print(Path('audit-artifacts/tests.log').read_text())
+          print(json.dumps(report, indent=2))
+          sys.exit(0 if result.wasSuccessful() else 1)
+          PY
+      - name: Upload evidence (never commit or publish market data)
         if: always()
         uses: actions/upload-artifact@v4
         with:
