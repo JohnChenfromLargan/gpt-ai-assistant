@@ -93,6 +93,8 @@ def corrected_fetch_corporate_actions(symbol: str, start: str, end: str):
         "source_action_rows": source_rows,
         "source_market_rows": source_market_rows,
         "status_samples": status_samples,
+        "fetch_error_count": len(errors),
+        "fetch_errors_sample": errors[:10],
     }
     return result, errors, diagnostics
 
