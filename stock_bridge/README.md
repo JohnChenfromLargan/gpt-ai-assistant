@@ -85,7 +85,7 @@ ChatGPT 股票排程
 - 主要排程：台北時間週一至週五 09:18、10:18、11:18。
 - 備援排程：09:23、10:23、11:23。
 - ChatGPT 排程：09:30、10:30、11:30。
-- 若 cron 未即時更新，ChatGPT 排程只更新固定的 `stock_bridge/trigger.json` 一次，以 `push` 事件要求刷新，並等待 `publisher.json` 與 `latest.json` 更新。
+- PRE_REFRESH 主／補償任務更新固定的 `stock_bridge/trigger.json` 後讀回驗證，立即結束；FORMAL 只讀取並核對 trigger、workflow、publisher 與 latest，不再寫入 trigger。
 
 GitHub cron 不是唯一依賴；固定 trigger 是正式按需備援路徑。
 
@@ -155,3 +155,14 @@ ChatGPT 股票排程：
 4. 對 61～240 日加入基本面、估值、產業或重大公告依據。
 5. 確認當下進出場時機、訊號衝突與通知去重。
 6. 保留 `PIPELINE_STATE` 與資料異常通知機制。
+
+## 公司行動來源失敗處理（2026-10-14）
+
+- HTTP 安全拒絕、限流、網路失敗與非 JSON 回應保留具體分類、HTTP 狀態、Content-Type 等診斷；不輸出完整回應本文。
+- 明確安全拒絕或 HTTP 429 時停止本輪後續公司行動請求，不換帳號、代理或移除來源限制。
+- 暫時性網路／5xx 錯誤最多重試一次；本輪取得預算 90 秒，單次逾時最多 15 秒。預算耗盡仍為 FAIL。
+- 兩股共用本輪市場回應與失敗結果，避免重複下載相同日期區間；不把前次或前日快取當成今日成功查詢。
+- 只有 stat=OK、必要欄位完整、data 為列表且目標事件有效才接受；未知空回應或 ERROR 不得當成「無事件」。
+- 公司行動查詢不完整時，以 CORPORATE_ACTION_FETCH_FAILED 中止；只有完整取得後仍缺少已知事件，才標示 CORPORATE_ACTION_REGRESSION。兩者均阻止正式發布。
+- `phase2_fixed.py --self-test` 包含 `test_corporate_actions.py` 的 15 項離線回歸測試；Source CI 的來源檢查使用相同 HTTP 診斷函式。
+

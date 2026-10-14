@@ -11,6 +11,7 @@ on:
       - 'stock_bridge/bridge_quote_layer_v2.py'
       - 'stock_bridge/phase2.py'
       - 'stock_bridge/phase2_fixed.py'
+      - 'stock_bridge/test_corporate_actions.py'
       - 'stock_bridge/README.md'
       - '.github/workflows/twse-stock-bridge.yml'
   pull_request:
@@ -52,11 +53,9 @@ jobs:
         if: github.event_name != 'pull_request'
         run: |
           python - <<'PY'
-          import json, urllib.request
+          from stock_bridge.phase2 import http_json
           url = 'https://www.twse.com.tw/rwd/zh/exRight/TWT49U?startDate=20260724&endDate=20260724&response=json'
-          req = urllib.request.Request(url, headers={'User-Agent':'Mozilla/5.0','Accept':'application/json,text/plain,*/*'})
-          with urllib.request.urlopen(req, timeout=30) as resp:
-              data = json.loads(resp.read().decode('utf-8-sig'))
+          data = http_json(url)
           fields = data.get('fields') or []
           rows = data.get('data') or []
           code_idx = fields.index('股票代號') if '股票代號' in fields else None
@@ -117,3 +116,4 @@ jobs:
           print('quotes=', {k: v['status'] for k, v in data['quotes'].items()})
           print('quote_cache=', cache_meta)
           PY
+

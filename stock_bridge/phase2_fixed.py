@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import re
+import time
 import urllib.parse
 
 import phase2 as p
@@ -27,7 +29,78 @@ def robust_roc_date_to_iso(value: str) -> str:
     raise ValueError(f"unsupported TWSE date: {value}")
 
 
-def corrected_fetch_corporate_actions(symbol: str, start: str, end: str):
+class MarketFetcher:
+    """Share market responses within one run; stop on explicit access denial."""
+
+    def __init__(self):
+        self.cache = {}
+        self.failures = {}
+        self.blocked = None
+        self.started = time.monotonic()
+        self.requests = 0
+        self.cache_hits = 0
+
+    def get(self, url):
+        if self.blocked is not None:
+            raise self.blocked
+        if url in self.cache:
+            self.cache_hits += 1
+            return self.cache[url]
+        if url in self.failures:
+            raise self.failures[url]
+        for attempt in range(2):
+            remaining = 90 - (time.monotonic() - self.started)
+            if remaining <= 0:
+                self.blocked = p.SourceFetchError("SOURCE_FETCH_BUDGET_EXHAUSTED", url)
+                raise self.blocked
+            try:
+                self.requests += 1
+                payload = p.http_json(url, timeout=min(15, remaining))
+                self.cache[url] = payload
+                return payload
+            except p.SourceFetchError as exc:
+                if exc.category in {"SOURCE_ACCESS_DENIED", "SOURCE_RATE_LIMITED"}:
+                    self.blocked = exc
+                if self.blocked is not None or not exc.retryable or attempt == 1:
+                    self.failures[url] = exc
+                    raise
+                time.sleep(min(1, max(0, 90 - (time.monotonic() - self.started))))
+
+
+def validated_action_table(payload, symbol, kind, d1, d2):
+    if not isinstance(payload, dict) or payload.get("stat") != "OK":
+        stat = payload.get("stat") if isinstance(payload, dict) else "NON_DICT"
+        raise ValueError(f"SOURCE_INVALID_STATUS:{stat}")
+    fields, rows = payload.get("fields"), payload.get("data")
+    if not isinstance(fields, list) or not isinstance(rows, list):
+        raise ValueError("SOURCE_INVALID_TABLE")
+    aliases = (["資料日期", "除權息日期", "恢復買賣日期"],
+               ["股票代號", "證券代號"],
+               ["除權息前收盤價", "停止買賣前收盤價格", "停止買賣前收盤價"],
+               ["除權息參考價", "恢復買賣參考價"])
+    indices = [p.field_index(fields, a) for a in aliases]
+    if any(i is None for i in indices):
+        raise ValueError("SOURCE_MISSING_REQUIRED_FIELDS")
+    if any(not isinstance(row, list) or len(row) <= max(indices) for row in rows):
+        raise ValueError("SOURCE_MALFORMED_ROW")
+    target_rows = [r for r in rows if str(r[indices[1]]).strip() == symbol]
+    parsed = p.parse_action_table(payload, symbol, kind)
+    if len(parsed) != len(target_rows):
+        raise ValueError("SOURCE_UNPARSED_TARGET_ROW")
+    for action in parsed:
+        p.date.fromisoformat(action["date"])
+        if not d1 <= action["date"].replace("-", "") <= d2:
+            raise ValueError("SOURCE_ACTION_OUTSIDE_REQUESTED_RANGE")
+        if action["name"] != p.SYMBOLS[symbol]:
+            raise ValueError("SOURCE_ACTION_NAME_MISMATCH")
+        if any(not math.isfinite(action[k]) or action[k] <= 0
+               for k in ("pre_close", "reference_price", "back_adjust_factor")):
+            raise ValueError("SOURCE_INVALID_ACTION_PRICE")
+    return parsed
+
+
+def corrected_fetch_corporate_actions(symbol: str, start: str, end: str, fetcher=None):
+    fetcher = fetcher or MarketFetcher()
     actions = []
     errors = []
     endpoint_families = {
@@ -55,7 +128,7 @@ def corrected_fetch_corporate_actions(symbol: str, start: str, end: str):
                 params = urllib.parse.urlencode({"response": "json", start_key: d1, end_key: d2})
                 url = base + "?" + params
                 try:
-                    payload = p.http_json(url)
+                    payload = fetcher.get(url)
                     stat = str(payload.get("stat", "")) if isinstance(payload, dict) else "NON_DICT"
                     fields = payload.get("fields") or [] if isinstance(payload, dict) else []
                     rows = payload.get("data") or [] if isinstance(payload, dict) else []
@@ -67,25 +140,28 @@ def corrected_fetch_corporate_actions(symbol: str, start: str, end: str):
                             "market_rows": len(rows) if isinstance(rows, list) else None,
                             "fields": fields[:6] if isinstance(fields, list) else None,
                         })
-                    if isinstance(payload, dict) and isinstance(fields, list) and isinstance(rows, list):
-                        if rows and not fields:
-                            last_problem = f"{kind}:{d1}-{d2}:rows_without_fields:{base}"
-                            continue
-                        parsed = p.parse_action_table(payload, symbol, kind) if rows else []
-                        source_success[kind] += 1
-                        source_market_rows[kind] += len(rows)
-                        source_rows[kind] += len(parsed)
-                        actions.extend(parsed)
-                        window_done = True
-                        break
-                    last_problem = f"{kind}:{d1}-{d2}:unexpected_payload:{base}:{stat}"
+                    parsed = validated_action_table(payload, symbol, kind, d1, d2)
+                    source_success[kind] += 1
+                    source_market_rows[kind] += len(rows)
+                    source_rows[kind] += len(parsed)
+                    actions.extend(parsed)
+                    window_done = True
+                    break
                 except Exception as exc:
                     last_problem = f"{kind}:{d1}-{d2}:{base}:{type(exc).__name__}:{exc}"
+                    if fetcher.blocked is not None:
+                        break
             if not window_done and last_problem:
                 errors.append(last_problem)
 
     uniq = {}
+    event_prices = {}
     for a in actions:
+        key = (a["date"], a["kind"])
+        prices = (a["pre_close"], a["reference_price"])
+        if key in event_prices and event_prices[key] != prices:
+            errors.append(f"SOURCE_CONFLICTING_ACTION:{symbol}:{key}")
+        event_prices[key] = prices
         uniq[(a["date"], a["kind"], a["pre_close"], a["reference_price"])] = a
     result = sorted(uniq.values(), key=lambda x: (x["date"], x["kind"]))
     diagnostics = {
@@ -95,6 +171,9 @@ def corrected_fetch_corporate_actions(symbol: str, start: str, end: str):
         "status_samples": status_samples,
         "fetch_error_count": len(errors),
         "fetch_errors_sample": errors[:10],
+        "http_request_count": fetcher.requests,
+        "shared_response_cache_hits": fetcher.cache_hits,
+        "circuit_open": fetcher.blocked is not None,
     }
     return result, errors, diagnostics
 
@@ -103,9 +182,10 @@ def run():
     original_fetch = p.fetch_corporate_actions
     original_date_parser = p.roc_date_to_iso
     diagnostics_by_symbol = {}
+    fetcher = MarketFetcher()
 
     def adapter(symbol, start, end):
-        actions, errors, diag = corrected_fetch_corporate_actions(symbol, start, end)
+        actions, errors, diag = corrected_fetch_corporate_actions(symbol, start, end, fetcher)
         diagnostics_by_symbol[symbol] = diag
         return actions, errors
 
@@ -119,6 +199,14 @@ def run():
 
     for symbol, diag in diagnostics_by_symbol.items():
         data["analytics"][symbol]["corporate_actions"]["source_diagnostics"] = diag
+
+    failed = {s: a["corporate_actions"] for s, a in data["analytics"].items()
+              if a.get("corporate_actions", {}).get("fetch_error_count", 0)}
+    if failed:
+        p.LATEST_PATH.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        details = {s: {k: a.get(k) for k in ("fetch_error_count", "fetch_errors_sample", "source_diagnostics")}
+                   for s, a in failed.items()}
+        raise RuntimeError("CORPORATE_ACTION_FETCH_FAILED: " + json.dumps(details, ensure_ascii=False))
 
     # Regression sentinel: official TWSE data contains 2002 ex-dividend on 2026-07-24.
     history_2002 = p.load_history("2002")
@@ -150,6 +238,11 @@ def self_test():
     assert ranges[-1][1] == "20260815"
     q = urllib.parse.urlencode({"response": "json", "startDate": "20260724", "endDate": "20260724"})
     assert "startDate=20260724" in q and "endDate=20260724" in q
+    import unittest
+    suite = unittest.defaultTestLoader.discover(str(p.ROOT), pattern="test_corporate_actions.py")
+    result = unittest.TextTestRunner(verbosity=2).run(suite)
+    if not result.wasSuccessful() or result.testsRun == 0:
+        raise RuntimeError("CORPORATE_ACTION_SELF_TEST_FAILED")
     print("PHASE2_FIXED_SELF_TEST_PASS")
 
 

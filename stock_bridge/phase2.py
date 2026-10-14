@@ -11,6 +11,7 @@ import argparse
 import json
 import math
 import statistics
+import urllib.error
 import urllib.parse
 import urllib.request
 from datetime import date, datetime, timedelta, timezone
@@ -27,10 +28,47 @@ USER_AGENT = "Mozilla/5.0 (compatible; TWSE-Stock-Bridge/2.0; +https://github.co
 HORIZONS = [10, 20, 22, 40, 60, 120, 240]
 
 
-def http_json(url: str) -> Any:
+class SourceFetchError(RuntimeError):
+    """Public-source failure with bounded, non-body diagnostics."""
+
+    def __init__(self, category: str, url: str, *, retryable: bool = False, **details):
+        self.category = category
+        self.retryable = retryable
+        self.details = {"category": category, "url": url, **details}
+        super().__init__(json.dumps(self.details, ensure_ascii=False))
+
+
+def _response_details(status, content_type, body: bytes) -> dict:
+    prefix = body[:2048].decode("utf-8-sig", errors="replace")
+    denied = any(s in prefix.lower() for s in (
+        "for security reasons", "this page can not be accessed", "因為安全性考量",
+    ))
+    return {"http_status": status, "content_type": content_type,
+            "response_bytes": len(body), "security_denied": denied}
+
+
+def http_json(url: str, timeout: float = HTTP_TIMEOUT) -> Any:
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Accept": "application/json,text/plain,*/*"})
-    with urllib.request.urlopen(req, timeout=HTTP_TIMEOUT) as resp:
-        return json.loads(resp.read().decode("utf-8-sig"))
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            body = resp.read()
+            details = _response_details(resp.status, resp.headers.get("Content-Type"), body)
+    except urllib.error.HTTPError as exc:
+        details = _response_details(exc.code, exc.headers.get("Content-Type"), exc.read(2048))
+        category = ("SOURCE_RATE_LIMITED" if exc.code == 429 else
+                    "SOURCE_ACCESS_DENIED" if exc.code in (401, 403) or details["security_denied"] else
+                    "SOURCE_HTTP_ERROR")
+        raise SourceFetchError(category, url, retryable=500 <= exc.code < 600, **details) from exc
+    except (urllib.error.URLError, TimeoutError, OSError) as exc:
+        raise SourceFetchError("SOURCE_NETWORK_ERROR", url, retryable=True,
+                               error_type=type(exc).__name__, reason=str(exc)[:300]) from exc
+    if details["security_denied"]:
+        raise SourceFetchError("SOURCE_ACCESS_DENIED", url, **details)
+    try:
+        return json.loads(body.decode("utf-8-sig"),
+                          parse_constant=lambda value: (_ for _ in ()).throw(ValueError(value)))
+    except (ValueError, UnicodeError) as exc:
+        raise SourceFetchError("SOURCE_INVALID_JSON", url, **details) from exc
 
 
 def parse_number(v: Any) -> float | None:
