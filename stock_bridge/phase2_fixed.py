@@ -120,45 +120,72 @@ def corrected_fetch_corporate_actions(symbol: str, start: str, end: str, fetcher
     status_samples = {kind: [] for kind in endpoint_families}
     endpoint_failures = []
 
-    # Year-size windows are sufficient now that the real issue (ROC Chinese date format)
-    # is fixed. This keeps the scheduled job fast while retaining full 3-year coverage.
+    adaptive_splits = []
+
+    def read_window(kind, variants, d1, d2, split_allowed=True):
+        window_problems = []
+        for base, start_key, end_key in variants:
+            params = urllib.parse.urlencode({"response": "json", start_key: d1, end_key: d2})
+            url = base + "?" + params
+            try:
+                payload = fetcher.get(url)
+                stat = str(payload.get("stat", "")) if isinstance(payload, dict) else "NON_DICT"
+                fields = payload.get("fields") or [] if isinstance(payload, dict) else []
+                rows = payload.get("data") or [] if isinstance(payload, dict) else []
+                if len(status_samples[kind]) < 8:
+                    status_samples[kind].append({
+                        "range": f"{d1}-{d2}",
+                        "endpoint": base,
+                        "stat": stat,
+                        "market_rows": len(rows) if isinstance(rows, list) else None,
+                        "fields": fields[:6] if isinstance(fields, list) else None,
+                    })
+                parsed = validated_action_table(payload, symbol, kind, d1, d2)
+                source_success[kind] += 1
+                source_market_rows[kind] += len(rows)
+                source_rows[kind] += len(parsed)
+                actions.extend(parsed)
+                return
+            except Exception as exc:
+                problem = f"{kind}:{d1}-{d2}:{base}:{type(exc).__name__}:{exc}"
+                window_problems.append(problem)
+                if len(endpoint_failures) < 16:
+                    endpoint_failures.append(problem)
+                if fetcher.blocked is not None:
+                    break
+                read_timeout = (
+                    isinstance(exc, p.SourceFetchError)
+                    and exc.category == "SOURCE_NETWORK_ERROR"
+                    and (exc.details.get("error_type") == "TimeoutError"
+                         or "timed out" in str(exc.details.get("reason", "")).lower())
+                )
+                if split_allowed and read_timeout:
+                    first = p.date(int(d1[:4]), int(d1[4:6]), int(d1[6:]))
+                    last = p.date(int(d2[:4]), int(d2[4:6]), int(d2[6:]))
+                    days = (last - first).days + 1
+                    if days > 183:
+                        midpoint = first + p.timedelta(days=days // 2 - 1)
+                        second = midpoint + p.timedelta(days=1)
+                        left_end, right_start = midpoint.strftime("%Y%m%d"), second.strftime("%Y%m%d")
+                        if len(adaptive_splits) < 8:
+                            adaptive_splits.append({
+                                "kind": kind, "range": f"{d1}-{d2}",
+                                "reason": "SOURCE_READ_TIMEOUT",
+                                "children": [f"{d1}-{left_end}", f"{right_start}-{d2}"],
+                            })
+                        # Complete, adjacent halves; no recursive splitting or
+                        # budget reset. Each child must pass all source checks.
+                        read_window(kind, variants, d1, left_end, False)
+                        read_window(kind, variants, right_start, d2, False)
+                        return
+        if window_problems:
+            errors.append(" | ".join(window_problems))
+
+    # Prefer the existing annual requests. Split only a proven read timeout
+    # once, to reduce response size within the same 90-second fetch budget.
     for d1, d2 in p.chunk_date_ranges(start, end, days=365):
         for kind, variants in endpoint_families.items():
-            window_done = False
-            window_problems = []
-            for base, start_key, end_key in variants:
-                params = urllib.parse.urlencode({"response": "json", start_key: d1, end_key: d2})
-                url = base + "?" + params
-                try:
-                    payload = fetcher.get(url)
-                    stat = str(payload.get("stat", "")) if isinstance(payload, dict) else "NON_DICT"
-                    fields = payload.get("fields") or [] if isinstance(payload, dict) else []
-                    rows = payload.get("data") or [] if isinstance(payload, dict) else []
-                    if len(status_samples[kind]) < 8:
-                        status_samples[kind].append({
-                            "range": f"{d1}-{d2}",
-                            "endpoint": base,
-                            "stat": stat,
-                            "market_rows": len(rows) if isinstance(rows, list) else None,
-                            "fields": fields[:6] if isinstance(fields, list) else None,
-                        })
-                    parsed = validated_action_table(payload, symbol, kind, d1, d2)
-                    source_success[kind] += 1
-                    source_market_rows[kind] += len(rows)
-                    source_rows[kind] += len(parsed)
-                    actions.extend(parsed)
-                    window_done = True
-                    break
-                except Exception as exc:
-                    problem = f"{kind}:{d1}-{d2}:{base}:{type(exc).__name__}:{exc}"
-                    window_problems.append(problem)
-                    if len(endpoint_failures) < 16:
-                        endpoint_failures.append(problem)
-                    if fetcher.blocked is not None:
-                        break
-            if not window_done and window_problems:
-                # A failing fallback must not hide the primary's actual error.
-                errors.append(" | ".join(window_problems))
+            read_window(kind, variants, d1, d2)
 
     uniq = {}
     event_prices = {}
@@ -176,6 +203,7 @@ def corrected_fetch_corporate_actions(symbol: str, start: str, end: str, fetcher
         "source_market_rows": source_market_rows,
         "status_samples": status_samples,
         "endpoint_failures_sample": endpoint_failures,
+        "adaptive_splits_sample": adaptive_splits,
         "fetch_error_count": len(errors),
         "fetch_errors_sample": errors[:10],
         "http_request_count": fetcher.requests,
