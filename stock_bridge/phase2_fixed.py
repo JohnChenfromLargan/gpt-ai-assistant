@@ -106,24 +106,26 @@ def corrected_fetch_corporate_actions(symbol: str, start: str, end: str, fetcher
     endpoint_families = {
         "EX_RIGHT_DIVIDEND": [
             ("https://www.twse.com.tw/rwd/zh/exRight/TWT49U", "startDate", "endDate"),
-            ("https://www.twse.com.tw/exchangeReport/TWT49U", "strDate", "endDate"),
+            # The legacy route now also requires startDate. strDate is ignored
+            # and can make a valid historical window look reversed server-side.
+            ("https://www.twse.com.tw/exchangeReport/TWT49U", "startDate", "endDate"),
         ],
         "CAPITAL_REDUCTION": [
             ("https://www.twse.com.tw/exchangeReport/TWTAUU", "startDate", "endDate"),
-            ("https://www.twse.com.tw/exchangeReport/TWTAUU", "strDate", "endDate"),
         ],
     }
     source_success = {kind: 0 for kind in endpoint_families}
     source_rows = {kind: 0 for kind in endpoint_families}
     source_market_rows = {kind: 0 for kind in endpoint_families}
     status_samples = {kind: [] for kind in endpoint_families}
+    endpoint_failures = []
 
     # Year-size windows are sufficient now that the real issue (ROC Chinese date format)
     # is fixed. This keeps the scheduled job fast while retaining full 3-year coverage.
     for d1, d2 in p.chunk_date_ranges(start, end, days=365):
         for kind, variants in endpoint_families.items():
             window_done = False
-            last_problem = None
+            window_problems = []
             for base, start_key, end_key in variants:
                 params = urllib.parse.urlencode({"response": "json", start_key: d1, end_key: d2})
                 url = base + "?" + params
@@ -148,11 +150,15 @@ def corrected_fetch_corporate_actions(symbol: str, start: str, end: str, fetcher
                     window_done = True
                     break
                 except Exception as exc:
-                    last_problem = f"{kind}:{d1}-{d2}:{base}:{type(exc).__name__}:{exc}"
+                    problem = f"{kind}:{d1}-{d2}:{base}:{type(exc).__name__}:{exc}"
+                    window_problems.append(problem)
+                    if len(endpoint_failures) < 16:
+                        endpoint_failures.append(problem)
                     if fetcher.blocked is not None:
                         break
-            if not window_done and last_problem:
-                errors.append(last_problem)
+            if not window_done and window_problems:
+                # A failing fallback must not hide the primary's actual error.
+                errors.append(" | ".join(window_problems))
 
     uniq = {}
     event_prices = {}
@@ -169,6 +175,7 @@ def corrected_fetch_corporate_actions(symbol: str, start: str, end: str, fetcher
         "source_action_rows": source_rows,
         "source_market_rows": source_market_rows,
         "status_samples": status_samples,
+        "endpoint_failures_sample": endpoint_failures,
         "fetch_error_count": len(errors),
         "fetch_errors_sample": errors[:10],
         "http_request_count": fetcher.requests,
@@ -267,3 +274,4 @@ def main():
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
