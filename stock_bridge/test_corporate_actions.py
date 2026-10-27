@@ -165,6 +165,49 @@ class CorporateActionTests(unittest.TestCase):
                 f.run()
             self.assertFalse(json.loads(p.LATEST_PATH.read_text())["bridge"]["analysis_ready"])
 
+    def test_legacy_fallback_preserves_requested_window_and_shared_results(self):
+        def market_response(url, **kwargs):
+            query = urllib.parse.parse_qs(urllib.parse.urlsplit(url).query)
+            if "/rwd/" in url:
+                raise p.SourceFetchError("SOURCE_NETWORK_ERROR", url, retryable=True)
+            if query.get("startDate") != ["20260724"]:
+                return {"stat": "查詢結束日期小於查詢開始日期，請重新查詢!"}
+            if query.get("endDate") != ["20260724"]:
+                return {"stat": "ERROR"}
+            return copy.deepcopy(PAYLOAD)
+
+        fetcher = f.MarketFetcher()
+        with patch.object(p, "http_json", side_effect=market_response) as get, patch.object(f.time, "sleep"):
+            for symbol in p.SYMBOLS:
+                actions, errors, diag = f.corrected_fetch_corporate_actions(
+                    symbol, "2026-07-24", "2026-07-24", fetcher)
+                self.assertFalse(errors)
+                self.assertEqual(len(actions), 2)
+                self.assertTrue(all(a["date"] == "2026-07-24" for a in actions))
+                self.assertEqual(diag["source_success_windows"],
+                                 {"EX_RIGHT_DIVIDEND": 1, "CAPITAL_REDUCTION": 1})
+            # Two bounded primary attempts, one valid fallback, one capital table.
+            # The second symbol reuses the same payloads without new HTTP calls.
+            self.assertEqual(get.call_count, 4)
+
+    def test_primary_and_fallback_errors_remain_visible(self):
+        def market_response(url, **kwargs):
+            if "/rwd/" in url:
+                raise p.SourceFetchError("SOURCE_NETWORK_ERROR", url, reason="read timed out")
+            if "TWT49U" in url:
+                return {"stat": "查詢結束日期小於查詢開始日期，請重新查詢!"}
+            return {"stat": "OK", "fields": FIELDS, "data": []}
+
+        with patch.object(p, "http_json", side_effect=market_response):
+            actions, errors, diag = f.corrected_fetch_corporate_actions(
+                "2002", "2026-07-24", "2026-07-24")
+        self.assertEqual(actions, [])
+        self.assertEqual(len(errors), 1)
+        self.assertIn("SOURCE_NETWORK_ERROR", errors[0])
+        self.assertIn("SOURCE_INVALID_STATUS", errors[0])
+        self.assertEqual(len(diag["endpoint_failures_sample"]), 2)
+        self.assertTrue(any("/rwd/" in error for error in diag["endpoint_failures_sample"]))
+
     def test_complete_phase2_retains_pass_with_shared_valid_official_tables(self):
         def market_response(url, **kwargs):
             query = urllib.parse.parse_qs(urllib.parse.urlsplit(url).query)
@@ -199,3 +242,4 @@ class CorporateActionTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
