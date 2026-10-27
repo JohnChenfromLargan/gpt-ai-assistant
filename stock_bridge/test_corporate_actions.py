@@ -208,6 +208,79 @@ class CorporateActionTests(unittest.TestCase):
         self.assertEqual(len(diag["endpoint_failures_sample"]), 2)
         self.assertTrue(any("/rwd/" in error for error in diag["endpoint_failures_sample"]))
 
+    def test_timed_out_annual_table_can_be_covered_by_two_verified_halves(self):
+        def market_response(url, **kwargs):
+            query = urllib.parse.parse_qs(urllib.parse.urlsplit(url).query)
+            start, end = query["startDate"][0], query["endDate"][0]
+            if "TWT49U" in url and start == "20260101" and end == "20261231":
+                raise p.SourceFetchError("SOURCE_NETWORK_ERROR", url, retryable=True,
+                                         error_type="TimeoutError", reason="The read operation timed out")
+            payload = copy.deepcopy(PAYLOAD)
+            if "TWTAUU" in url or not start <= "20260724" <= end:
+                payload["data"] = []
+            return payload
+
+        fetcher = f.MarketFetcher()
+        with patch.object(p, "http_json", side_effect=market_response) as get, patch.object(f.time, "sleep"):
+            for symbol in p.SYMBOLS:
+                actions, errors, diag = f.corrected_fetch_corporate_actions(
+                    symbol, "2026-01-01", "2026-12-31", fetcher)
+                self.assertFalse(errors)
+                self.assertEqual(len(actions), 1)
+                self.assertEqual(actions[0]["date"], "2026-07-24")
+                self.assertEqual(diag["source_success_windows"]["EX_RIGHT_DIVIDEND"], 2)
+                self.assertEqual(len(diag["adaptive_splits_sample"]), 1)
+                self.assertEqual(diag["adaptive_splits_sample"][0]["children"],
+                                 ["20260101-20260701", "20260702-20261231"])
+            self.assertEqual(get.call_count, 5)
+
+    def test_missing_half_of_timed_out_table_cannot_pass(self):
+        def market_response(url, **kwargs):
+            query = urllib.parse.parse_qs(urllib.parse.urlsplit(url).query)
+            start, end = query["startDate"][0], query["endDate"][0]
+            if "TWTAUU" in url:
+                return {"stat": "OK", "fields": FIELDS, "data": []}
+            if start == "20260101" and end == "20261231":
+                raise p.SourceFetchError("SOURCE_NETWORK_ERROR", url, retryable=True,
+                                         error_type="TimeoutError", reason="The read operation timed out")
+            if start == "20260101":
+                return {"stat": "OK", "fields": FIELDS, "data": []}
+            return {"stat": "ERROR"}
+
+        with patch.object(p, "http_json", side_effect=market_response), patch.object(f.time, "sleep"):
+            actions, errors, diag = f.corrected_fetch_corporate_actions(
+                "2002", "2026-01-01", "2026-12-31")
+        self.assertEqual(actions, [])
+        self.assertTrue(errors)
+        self.assertEqual(diag["source_success_windows"]["EX_RIGHT_DIVIDEND"], 1)
+        self.assertEqual(diag["fetch_error_count"], 1)
+        self.assertIn("SOURCE_INVALID_STATUS", errors[0])
+
+    def test_timeout_split_does_not_reset_the_original_fetch_budget(self):
+        def timeout(url, **kwargs):
+            raise p.SourceFetchError("SOURCE_NETWORK_ERROR", url, retryable=True,
+                                     error_type="TimeoutError", reason="The read operation timed out")
+        with patch.object(f.time, "monotonic", side_effect=[0, 1, 2, 3, 91]), \
+                patch.object(f.time, "sleep"), patch.object(p, "http_json", side_effect=timeout) as get:
+            fetcher = f.MarketFetcher()
+            actions, errors, diag = f.corrected_fetch_corporate_actions(
+                "2002", "2026-01-01", "2026-12-31", fetcher)
+        self.assertEqual(actions, [])
+        self.assertTrue(errors)
+        self.assertEqual(get.call_count, 2)
+        self.assertEqual(len(diag["adaptive_splits_sample"]), 1)
+        self.assertTrue(diag["circuit_open"])
+        self.assertIn("SOURCE_FETCH_BUDGET_EXHAUSTED", " ".join(errors))
+
+    def test_invalid_json_is_not_treated_as_a_splittable_timeout(self):
+        error = p.SourceFetchError("SOURCE_INVALID_JSON", "https://www.twse.com.tw/test")
+        with patch.object(p, "http_json", side_effect=error) as get:
+            _, errors, diag = f.corrected_fetch_corporate_actions(
+                "2002", "2026-01-01", "2026-12-31")
+        self.assertEqual(len(errors), 2)
+        self.assertEqual(diag["adaptive_splits_sample"], [])
+        self.assertEqual(get.call_count, 3)
+
     def test_complete_phase2_retains_pass_with_shared_valid_official_tables(self):
         def market_response(url, **kwargs):
             query = urllib.parse.parse_qs(urllib.parse.urlsplit(url).query)
