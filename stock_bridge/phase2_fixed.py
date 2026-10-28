@@ -29,6 +29,13 @@ def robust_roc_date_to_iso(value: str) -> str:
     raise ValueError(f"unsupported TWSE date: {value}")
 
 
+def is_read_timeout(exc):
+    return (isinstance(exc, p.SourceFetchError)
+            and exc.category == "SOURCE_NETWORK_ERROR"
+            and (exc.details.get("error_type") == "TimeoutError"
+                 or "timed out" in str(exc.details.get("reason", "")).lower()))
+
+
 class MarketFetcher:
     """Share market responses within one run; stop on explicit access denial."""
 
@@ -40,7 +47,7 @@ class MarketFetcher:
         self.requests = 0
         self.cache_hits = 0
 
-    def get(self, url):
+    def get(self, url, *, retry_read_timeout=True):
         if self.blocked is not None:
             raise self.blocked
         if url in self.cache:
@@ -61,7 +68,8 @@ class MarketFetcher:
             except p.SourceFetchError as exc:
                 if exc.category in {"SOURCE_ACCESS_DENIED", "SOURCE_RATE_LIMITED"}:
                     self.blocked = exc
-                if self.blocked is not None or not exc.retryable or attempt == 1:
+                if (self.blocked is not None or not exc.retryable or attempt == 1
+                        or (not retry_read_timeout and is_read_timeout(exc))):
                     self.failures[url] = exc
                     raise
                 time.sleep(min(1, max(0, 90 - (time.monotonic() - self.started))))
@@ -123,12 +131,18 @@ def corrected_fetch_corporate_actions(symbol: str, start: str, end: str, fetcher
     adaptive_splits = []
 
     def read_window(kind, variants, d1, d2, split_allowed=True):
+        first = p.date(int(d1[:4]), int(d1[4:6]), int(d1[6:]))
+        last = p.date(int(d2[:4]), int(d2[4:6]), int(d2[6:]))
+        days = (last - first).days + 1
+        splittable = split_allowed and days > 183
         window_problems = []
         for base, start_key, end_key in variants:
             params = urllib.parse.urlencode({"response": "json", start_key: d1, end_key: d2})
             url = base + "?" + params
             try:
-                payload = fetcher.get(url)
+                # Spending a second 15s on the same large response starves
+                # later windows. A read timeout goes straight to the halves.
+                payload = fetcher.get(url, retry_read_timeout=not splittable)
                 stat = str(payload.get("stat", "")) if isinstance(payload, dict) else "NON_DICT"
                 fields = payload.get("fields") or [] if isinstance(payload, dict) else []
                 rows = payload.get("data") or [] if isinstance(payload, dict) else []
@@ -153,16 +167,7 @@ def corrected_fetch_corporate_actions(symbol: str, start: str, end: str, fetcher
                     endpoint_failures.append(problem)
                 if fetcher.blocked is not None:
                     break
-                read_timeout = (
-                    isinstance(exc, p.SourceFetchError)
-                    and exc.category == "SOURCE_NETWORK_ERROR"
-                    and (exc.details.get("error_type") == "TimeoutError"
-                         or "timed out" in str(exc.details.get("reason", "")).lower())
-                )
-                if split_allowed and read_timeout:
-                    first = p.date(int(d1[:4]), int(d1[4:6]), int(d1[6:]))
-                    last = p.date(int(d2[:4]), int(d2[4:6]), int(d2[6:]))
-                    days = (last - first).days + 1
+                if splittable and is_read_timeout(exc):
                     if days > 183:
                         midpoint = first + p.timedelta(days=days // 2 - 1)
                         second = midpoint + p.timedelta(days=1)
@@ -213,6 +218,45 @@ def corrected_fetch_corporate_actions(symbol: str, start: str, end: str, fetcher
     return result, errors, diagnostics
 
 
+def persist_verified_history_metadata(data):
+    """Publish completed Phase-2 state while preserving raw OHLCV rows."""
+    pending = []
+    checked_at = p.datetime.now(p.TZ_TAIPEI).isoformat(timespec="seconds")
+    for symbol in p.SYMBOLS:
+        info = data.get("history", {}).get(symbol, {})
+        analytics = data.get("analytics", {}).get(symbol, {})
+        actions = analytics.get("corporate_actions", {})
+        if not (info.get("history_gate") == "PASS"
+                and info.get("price_adjustment_status") == "PASS"
+                and info.get("integrity_error_count") == 0
+                and info.get("analysis_ready") is True
+                and analytics.get("analysis_ready") is True
+                and actions.get("status") == "PASS"
+                and actions.get("fetch_error_count") == 0
+                and actions.get("unresolved_discontinuities") == []):
+            raise RuntimeError(f"HISTORY_PHASE2_NOT_VERIFIED:{symbol}")
+        path = p.HISTORY_DIR / f"{symbol}.json"
+        obj = json.loads(path.read_text(encoding="utf-8"))
+        rows = obj.get("rows")
+        if (not isinstance(rows, list) or not rows
+                or len(rows) != info.get("count")
+                or rows[0].get("date") != info.get("first_date")
+                or rows[-1].get("date") != info.get("last_date")):
+            raise RuntimeError(f"HISTORY_PHASE2_PAYLOAD_MISMATCH:{symbol}")
+        meta = obj.setdefault("meta", {})
+        if not isinstance(meta, dict):
+            raise RuntimeError(f"HISTORY_PHASE2_INVALID_METADATA:{symbol}")
+        meta.update(info)
+        meta.update({"row_price_basis": "RAW_OHLCV",
+                     "analytics_price_basis": "CORPORATE_ACTION_ADJUSTED",
+                     "phase2_verified_at": checked_at})
+        pending.append((path, json.dumps(obj, ensure_ascii=False, indent=2) + "\n"))
+    # Validate both artifacts before changing either. Any later write failure
+    # still aborts the workflow before the atomic publisher commit.
+    for path, content in pending:
+        path.write_text(content, encoding="utf-8")
+
+
 def run():
     original_fetch = p.fetch_corporate_actions
     original_date_parser = p.roc_date_to_iso
@@ -260,6 +304,7 @@ def run():
                 + json.dumps(diagnostics_by_symbol.get("2002", {}), ensure_ascii=False)
             )
 
+    persist_verified_history_metadata(data)
     p.LATEST_PATH.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return data
 
@@ -302,4 +347,5 @@ def main():
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
 
