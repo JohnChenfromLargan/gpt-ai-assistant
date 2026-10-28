@@ -186,11 +186,18 @@ def corrected_fetch_corporate_actions(symbol: str, start: str, end: str, fetcher
         if window_problems:
             errors.append(" | ".join(window_problems))
 
-    # Prefer the existing annual requests. Split only a proven read timeout
-    # once, to reduce response size within the same 90-second fetch budget.
+    # Dividend annual responses repeatedly time out before useful work starts.
+    # Query complete adjacent <=183-day windows directly. Capital tables are
+    # smaller and retain annual windows with the bounded timeout split.
     for d1, d2 in p.chunk_date_ranges(start, end, days=365):
         for kind, variants in endpoint_families.items():
-            read_window(kind, variants, d1, d2)
+            if kind == "EX_RIGHT_DIVIDEND":
+                first = p.date(int(d1[:4]), int(d1[4:6]), int(d1[6:])).isoformat()
+                last = p.date(int(d2[:4]), int(d2[4:6]), int(d2[6:])).isoformat()
+                for a, b in p.chunk_date_ranges(first, last, days=183):
+                    read_window(kind, variants, a, b, False)
+            else:
+                read_window(kind, variants, d1, d2)
 
     uniq = {}
     event_prices = {}
@@ -209,6 +216,7 @@ def corrected_fetch_corporate_actions(symbol: str, start: str, end: str, fetcher
         "status_samples": status_samples,
         "endpoint_failures_sample": endpoint_failures,
         "adaptive_splits_sample": adaptive_splits,
+        "max_query_days_by_kind": {"EX_RIGHT_DIVIDEND": 183, "CAPITAL_REDUCTION": 365},
         "fetch_error_count": len(errors),
         "fetch_errors_sample": errors[:10],
         "http_request_count": fetcher.requests,
