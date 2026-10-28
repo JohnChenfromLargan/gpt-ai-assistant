@@ -232,7 +232,7 @@ class CorporateActionTests(unittest.TestCase):
                 self.assertEqual(len(diag["adaptive_splits_sample"]), 1)
                 self.assertEqual(diag["adaptive_splits_sample"][0]["children"],
                                  ["20260101-20260701", "20260702-20261231"])
-            self.assertEqual(get.call_count, 5)
+            self.assertEqual(get.call_count, 4)
 
     def test_missing_half_of_timed_out_table_cannot_pass(self):
         def market_response(url, **kwargs):
@@ -281,6 +281,69 @@ class CorporateActionTests(unittest.TestCase):
         self.assertEqual(diag["adaptive_splits_sample"], [])
         self.assertEqual(get.call_count, 3)
 
+    def test_multiple_slow_annual_queries_leave_budget_for_remaining_windows(self):
+        clock = [0.0]
+        def sleep(seconds):
+            clock[0] += seconds
+        def market_response(url, timeout=15):
+            query = urllib.parse.parse_qs(urllib.parse.urlsplit(url).query)
+            start, end = query["startDate"][0], query["endDate"][0]
+            if "TWT49U" in url and (start, end) in {
+                    ("20240531", "20250530"), ("20250531", "20260530")}:
+                clock[0] += timeout
+                raise p.SourceFetchError("SOURCE_NETWORK_ERROR", url, retryable=True,
+                                         error_type="TimeoutError", reason="The read operation timed out")
+            if timeout < 5:
+                clock[0] += timeout
+                raise p.SourceFetchError("SOURCE_NETWORK_ERROR", url, retryable=True,
+                                         error_type="TimeoutError", reason="The read operation timed out")
+            clock[0] += 5
+            payload = copy.deepcopy(PAYLOAD)
+            if "TWTAUU" in url or not start <= "20260724" <= end:
+                payload["data"] = []
+            return payload
+        with patch.object(f.time, "monotonic", side_effect=lambda: clock[0]), \
+                patch.object(f.time, "sleep", side_effect=sleep), \
+                patch.object(p, "http_json", side_effect=market_response) as get:
+            fetcher = f.MarketFetcher()
+            for symbol in p.SYMBOLS:
+                actions, errors, diag = f.corrected_fetch_corporate_actions(
+                    symbol, "2023-06-01", "2026-10-27", fetcher)
+                self.assertFalse(errors)
+                self.assertEqual(len(actions), 1)
+                self.assertFalse(diag["circuit_open"])
+            self.assertEqual(get.call_count, 12)
+            self.assertLessEqual(clock[0], 90)
+
+    def test_history_metadata_is_not_partially_promoted_when_second_symbol_fails(self):
+        last = date(2026, 10, 27)
+        rows = [{"date": (last-timedelta(days=749-i)).isoformat(), "open": 100,
+                 "high": 101, "low": 99, "close": 100, "volume": 10} for i in range(750)]
+        info = {"history_gate": "PASS", "price_adjustment_status": "PASS",
+                "analysis_ready": True, "integrity_error_count": 0, "count": len(rows),
+                "first_date": rows[0]["date"], "last_date": rows[-1]["date"]}
+        with tempfile.TemporaryDirectory() as directory, patch.object(p, "HISTORY_DIR", Path(directory)):
+            for failure in ("count", "analytics"):
+                with self.subTest(failure=failure):
+                    data = {"history": {s: copy.deepcopy(info) for s in p.SYMBOLS},
+                            "analytics": {s: {"analysis_ready": True, "corporate_actions": {
+                                "status": "PASS", "fetch_error_count": 0,
+                                "unresolved_discontinuities": []}} for s in p.SYMBOLS}}
+                    snapshots = {}
+                    for symbol in p.SYMBOLS:
+                        raw = rows[:-1] if failure == "count" and symbol == "3019" else rows
+                        content = json.dumps({"rows": raw, "meta": {
+                            "price_adjustment_status": "PENDING_PHASE_2", "analysis_ready": False}})
+                        path = Path(directory)/f"{symbol}.json"
+                        path.write_text(content)
+                        snapshots[path] = content
+                    if failure == "analytics":
+                        data["analytics"]["3019"]["analysis_ready"] = False
+                    with self.assertRaisesRegex(RuntimeError, "HISTORY_PHASE2_.*:3019"):
+                        f.persist_verified_history_metadata(data)
+                    for path, content in snapshots.items():
+                        self.assertEqual(path.read_text(), content)
+
     def test_complete_phase2_retains_pass_with_shared_valid_official_tables(self):
         def market_response(url, **kwargs):
             query = urllib.parse.parse_qs(urllib.parse.urlsplit(url).query)
@@ -293,13 +356,16 @@ class CorporateActionTests(unittest.TestCase):
         last = date(2026, 10, 13)
         rows = [{"date": (last-timedelta(days=816-i)).isoformat(), "open": 100,
                  "high": 101, "low": 99, "close": 100, "volume": 10} for i in range(817)]
-        latest = {"bridge": {}, "history": {s: {"history_gate": "PASS", "long_term_750_ready": True}
+        latest = {"bridge": {}, "history": {s: {"history_gate": "PASS", "long_term_750_ready": True,
+                  "count": len(rows), "first_date": rows[0]["date"], "last_date": rows[-1]["date"],
+                  "integrity_error_count": 0}
                   for s in p.SYMBOLS}, "quotes": {s: {"status": "FAIL_NO_RECENT_TRADE"} for s in p.SYMBOLS}}
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             (root/"latest.json").write_text(json.dumps(latest))
             for symbol in p.SYMBOLS:
-                (root/f"{symbol}.json").write_text(json.dumps({"rows": rows}))
+                (root/f"{symbol}.json").write_text(json.dumps({"rows": rows, "meta": {
+                    "price_adjustment_status": "PENDING_PHASE_2", "analysis_ready": False}}))
             with patch.object(p, "LATEST_PATH", root/"latest.json"), patch.object(p, "HISTORY_DIR", root), \
                     patch.object(p, "http_json", side_effect=market_response) as get:
                 output = f.run()
@@ -310,9 +376,16 @@ class CorporateActionTests(unittest.TestCase):
                 self.assertEqual(actions["event_count"], 1)
                 self.assertEqual(actions["fetch_error_count"], 0)
                 self.assertEqual(actions["events"][0]["name"], p.SYMBOLS[symbol])
+                published = json.loads((root/f"{symbol}.json").read_text())
+                self.assertEqual(published["rows"], rows)
+                self.assertEqual(published["meta"]["price_adjustment_status"], "PASS")
+                self.assertTrue(published["meta"]["analysis_ready"])
+                for key, value in output["history"][symbol].items():
+                    self.assertEqual(published["meta"][key], value)
             self.assertEqual(get.call_count, 6)
 
 
 if __name__ == "__main__":
     unittest.main()
+
 
