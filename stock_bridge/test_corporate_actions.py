@@ -72,8 +72,8 @@ class CorporateActionTests(unittest.TestCase):
             for symbol in p.SYMBOLS:
                 actions, errors, diag = f.corrected_fetch_corporate_actions(symbol, "2023-06-01", "2026-10-13", fetcher)
                 self.assertFalse(actions)
-                self.assertEqual(len(errors), 8)
-                self.assertEqual(diag["fetch_error_count"], 8)
+                self.assertEqual(len(errors), 11)
+                self.assertEqual(diag["fetch_error_count"], 11)
                 self.assertTrue(diag["circuit_open"])
                 self.assertIn("SOURCE_ACCESS_DENIED", diag["fetch_errors_sample"][0])
             self.assertEqual(get.call_count, 1)
@@ -212,7 +212,7 @@ class CorporateActionTests(unittest.TestCase):
         def market_response(url, **kwargs):
             query = urllib.parse.parse_qs(urllib.parse.urlsplit(url).query)
             start, end = query["startDate"][0], query["endDate"][0]
-            if "TWT49U" in url and start == "20260101" and end == "20261231":
+            if "TWTAUU" in url and start == "20260101" and end == "20261231":
                 raise p.SourceFetchError("SOURCE_NETWORK_ERROR", url, retryable=True,
                                          error_type="TimeoutError", reason="The read operation timed out")
             payload = copy.deepcopy(PAYLOAD)
@@ -232,9 +232,9 @@ class CorporateActionTests(unittest.TestCase):
                 self.assertEqual(len(diag["adaptive_splits_sample"]), 1)
                 self.assertEqual(diag["adaptive_splits_sample"][0]["children"],
                                  ["20260101-20260701", "20260702-20261231"])
-            self.assertEqual(get.call_count, 4)
+            self.assertEqual(get.call_count, 5)
 
-    def test_missing_half_of_timed_out_table_cannot_pass(self):
+    def test_missing_planned_window_cannot_pass(self):
         def market_response(url, **kwargs):
             query = urllib.parse.parse_qs(urllib.parse.urlsplit(url).query)
             start, end = query["startDate"][0], query["endDate"][0]
@@ -268,7 +268,7 @@ class CorporateActionTests(unittest.TestCase):
         self.assertEqual(actions, [])
         self.assertTrue(errors)
         self.assertEqual(get.call_count, 2)
-        self.assertEqual(len(diag["adaptive_splits_sample"]), 1)
+        self.assertEqual(diag["adaptive_splits_sample"], [])
         self.assertTrue(diag["circuit_open"])
         self.assertIn("SOURCE_FETCH_BUDGET_EXHAUSTED", " ".join(errors))
 
@@ -277,9 +277,9 @@ class CorporateActionTests(unittest.TestCase):
         with patch.object(p, "http_json", side_effect=error) as get:
             _, errors, diag = f.corrected_fetch_corporate_actions(
                 "2002", "2026-01-01", "2026-12-31")
-        self.assertEqual(len(errors), 2)
+        self.assertEqual(len(errors), 3)
         self.assertEqual(diag["adaptive_splits_sample"], [])
-        self.assertEqual(get.call_count, 3)
+        self.assertEqual(get.call_count, 5)
 
     def test_multiple_slow_annual_queries_leave_budget_for_remaining_windows(self):
         clock = [0.0]
@@ -293,11 +293,11 @@ class CorporateActionTests(unittest.TestCase):
                 clock[0] += timeout
                 raise p.SourceFetchError("SOURCE_NETWORK_ERROR", url, retryable=True,
                                          error_type="TimeoutError", reason="The read operation timed out")
-            if timeout < 5:
+            if timeout < 7:
                 clock[0] += timeout
                 raise p.SourceFetchError("SOURCE_NETWORK_ERROR", url, retryable=True,
                                          error_type="TimeoutError", reason="The read operation timed out")
-            clock[0] += 5
+            clock[0] += 7
             payload = copy.deepcopy(PAYLOAD)
             if "TWTAUU" in url or not start <= "20260724" <= end:
                 payload["data"] = []
@@ -312,7 +312,7 @@ class CorporateActionTests(unittest.TestCase):
                 self.assertFalse(errors)
                 self.assertEqual(len(actions), 1)
                 self.assertFalse(diag["circuit_open"])
-            self.assertEqual(get.call_count, 12)
+            self.assertEqual(get.call_count, 11)
             self.assertLessEqual(clock[0], 90)
 
     def test_history_metadata_is_not_partially_promoted_when_second_symbol_fails(self):
@@ -382,7 +382,7 @@ class CorporateActionTests(unittest.TestCase):
                 self.assertTrue(published["meta"]["analysis_ready"])
                 for key, value in output["history"][symbol].items():
                     self.assertEqual(published["meta"][key], value)
-            self.assertEqual(get.call_count, 6)
+            self.assertEqual(get.call_count, 8)
 
 
 if __name__ == "__main__":
