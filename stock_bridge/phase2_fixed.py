@@ -12,6 +12,15 @@ import urllib.parse
 import phase2 as p
 
 
+# The retained history currently requires 7 dividend + 4 reduction requests.
+# At 15s per attempt and one 1s retry backoff, those 11 serial requests can
+# legitimately need 341s. Keep one 360s run-wide budget, without resetting it
+# for another symbol, endpoint variant, or split window. No extra concurrency.
+FETCH_BUDGET_SECONDS = 360
+REQUEST_TIMEOUT_SECONDS = 15
+MAX_FETCH_ATTEMPTS = 2
+
+
 def robust_roc_date_to_iso(value: str) -> str:
     """Parse TWSE ROC/Gregorian dates, including forms like 115年07月24日."""
     s = str(value).strip()
@@ -46,33 +55,66 @@ class MarketFetcher:
         self.started = time.monotonic()
         self.requests = 0
         self.cache_hits = 0
+        self.attempt_log = []
+
+    def budget_error(self, url):
+        return p.SourceFetchError(
+            "SOURCE_FETCH_BUDGET_EXHAUSTED", url,
+            budget_seconds=FETCH_BUDGET_SECONDS,
+            elapsed_seconds=round(time.monotonic() - self.started, 3))
+
+    def record_attempt(self, url, attempt, started, ended, timeout, outcome):
+        if len(self.attempt_log) < 32:
+            self.attempt_log.append({
+                "url": url, "attempt": attempt + 1,
+                "timeout_seconds": round(timeout, 3),
+                "duration_seconds": round(max(0, ended - started), 3),
+                "outcome": outcome,
+            })
 
     def get(self, url, *, retry_read_timeout=True):
-        if self.blocked is not None:
+        # A budget expiry stops new I/O, but already fetched same-run payloads
+        # remain available to the other symbol. Access/rate denials still stop
+        # everything, including cache reads.
+        if (self.blocked is not None
+                and self.blocked.category != "SOURCE_FETCH_BUDGET_EXHAUSTED"):
             raise self.blocked
         if url in self.cache:
             self.cache_hits += 1
             return self.cache[url]
         if url in self.failures:
             raise self.failures[url]
-        for attempt in range(2):
-            remaining = 90 - (time.monotonic() - self.started)
+        if self.blocked is not None:
+            raise self.budget_error(url)
+        for attempt in range(MAX_FETCH_ATTEMPTS):
+            started = time.monotonic()
+            remaining = FETCH_BUDGET_SECONDS - (started - self.started)
             if remaining <= 0:
-                self.blocked = p.SourceFetchError("SOURCE_FETCH_BUDGET_EXHAUSTED", url)
+                self.blocked = self.budget_error(url)
                 raise self.blocked
+            timeout = min(REQUEST_TIMEOUT_SECONDS, remaining)
             try:
                 self.requests += 1
-                payload = p.http_json(url, timeout=min(15, remaining))
-                self.cache[url] = payload
-                return payload
+                payload = p.http_json(url, timeout=timeout)
             except p.SourceFetchError as exc:
+                self.record_attempt(url, attempt, started, time.monotonic(), timeout, exc.category)
                 if exc.category in {"SOURCE_ACCESS_DENIED", "SOURCE_RATE_LIMITED"}:
                     self.blocked = exc
-                if (self.blocked is not None or not exc.retryable or attempt == 1
+                if (self.blocked is not None or not exc.retryable or attempt == MAX_FETCH_ATTEMPTS - 1
                         or (not retry_read_timeout and is_read_timeout(exc))):
                     self.failures[url] = exc
                     raise
-                time.sleep(min(1, max(0, 90 - (time.monotonic() - self.started))))
+                time.sleep(min(1, max(0, FETCH_BUDGET_SECONDS - (time.monotonic() - self.started))))
+            else:
+                ended = time.monotonic()
+                if ended - self.started > FETCH_BUDGET_SECONDS:
+                    self.record_attempt(url, attempt, started, ended, timeout,
+                                        "SOURCE_FETCH_BUDGET_EXHAUSTED")
+                    self.blocked = self.budget_error(url)
+                    raise self.blocked
+                self.record_attempt(url, attempt, started, ended, timeout, "PASS")
+                self.cache[url] = payload
+                return payload
 
 
 def validated_action_table(payload, symbol, kind, d1, d2):
@@ -222,6 +264,9 @@ def corrected_fetch_corporate_actions(symbol: str, start: str, end: str, fetcher
         "http_request_count": fetcher.requests,
         "shared_response_cache_hits": fetcher.cache_hits,
         "circuit_open": fetcher.blocked is not None,
+        "fetch_budget_seconds": FETCH_BUDGET_SECONDS,
+        "fetch_elapsed_seconds": round(time.monotonic() - fetcher.started, 3),
+        "http_attempts_sample": list(fetcher.attempt_log),
     }
     return result, errors, diagnostics
 
@@ -355,5 +400,6 @@ def main():
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
 
 
