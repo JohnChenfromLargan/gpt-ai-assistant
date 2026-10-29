@@ -105,9 +105,12 @@ class CorporateActionTests(unittest.TestCase):
             self.assertEqual(get.call_count, 2)
 
     def test_fetch_budget_prevents_new_requests(self):
-        with patch.object(f.time, "monotonic", side_effect=[0, 91]), patch.object(p, "http_json") as get:
+        clock = [0.0]
+        with patch.object(f.time, "monotonic", side_effect=lambda: clock[0]), patch.object(p, "http_json") as get:
+            fetcher = f.MarketFetcher()
+            clock[0] = f.FETCH_BUDGET_SECONDS + 1
             with self.assertRaisesRegex(p.SourceFetchError, "SOURCE_FETCH_BUDGET_EXHAUSTED"):
-                f.MarketFetcher().get("https://www.twse.com.tw/test")
+                fetcher.get("https://www.twse.com.tw/test")
             get.assert_not_called()
 
     def test_market_payload_is_shared_across_symbols(self):
@@ -257,18 +260,27 @@ class CorporateActionTests(unittest.TestCase):
         self.assertIn("SOURCE_INVALID_STATUS", errors[0])
 
     def test_timeout_split_does_not_reset_the_original_fetch_budget(self):
-        def timeout(url, **kwargs):
+        clock = [0.0]
+        def timeout(url, timeout=15):
+            if "TWT49U" in url:
+                return {"stat": "OK", "fields": FIELDS, "data": []}
+            if clock[0] == 0:
+                clock[0] = f.FETCH_BUDGET_SECONDS - 5
+            else:
+                clock[0] += timeout
             raise p.SourceFetchError("SOURCE_NETWORK_ERROR", url, retryable=True,
                                      error_type="TimeoutError", reason="The read operation timed out")
-        with patch.object(f.time, "monotonic", side_effect=[0, 1, 2, 3, 91]), \
-                patch.object(f.time, "sleep"), patch.object(p, "http_json", side_effect=timeout) as get:
+        with patch.object(f.time, "monotonic", side_effect=lambda: clock[0]), \
+                patch.object(f.time, "sleep", side_effect=lambda seconds: clock.__setitem__(0, clock[0] + seconds)), \
+                patch.object(p, "http_json", side_effect=timeout) as get:
             fetcher = f.MarketFetcher()
             actions, errors, diag = f.corrected_fetch_corporate_actions(
                 "2002", "2026-01-01", "2026-12-31", fetcher)
         self.assertEqual(actions, [])
         self.assertTrue(errors)
-        self.assertEqual(get.call_count, 2)
-        self.assertEqual(diag["adaptive_splits_sample"], [])
+        self.assertEqual(get.call_count, 4)
+        self.assertEqual(len(diag["adaptive_splits_sample"]), 1)
+        self.assertEqual(diag["source_success_windows"]["CAPITAL_REDUCTION"], 0)
         self.assertTrue(diag["circuit_open"])
         self.assertIn("SOURCE_FETCH_BUDGET_EXHAUSTED", " ".join(errors))
 
@@ -314,6 +326,91 @@ class CorporateActionTests(unittest.TestCase):
                 self.assertFalse(diag["circuit_open"])
             self.assertEqual(get.call_count, 11)
             self.assertLessEqual(clock[0], 90)
+
+    def test_all_history_windows_complete_when_each_needs_a_slow_retry(self):
+        clock = [0.0]
+        seen = set()
+        def market_response(url, timeout=15):
+            if url not in seen:
+                seen.add(url)
+                clock[0] += timeout
+                if "TWTAUU" in url:
+                    raise p.SourceFetchError("SOURCE_HTTP_ERROR", url, retryable=True, http_status=503)
+                raise p.SourceFetchError("SOURCE_NETWORK_ERROR", url, retryable=True,
+                                         error_type="TimeoutError", reason="The read operation timed out")
+            if timeout < 14:
+                clock[0] += timeout
+                raise p.SourceFetchError("SOURCE_NETWORK_ERROR", url, retryable=True)
+            clock[0] += 14
+            query = urllib.parse.parse_qs(urllib.parse.urlsplit(url).query)
+            start, end = query["startDate"][0], query["endDate"][0]
+            payload = copy.deepcopy(PAYLOAD)
+            if "TWTAUU" in url or not start <= "20260724" <= end:
+                payload["data"] = []
+            return payload
+
+        with patch.object(f.time, "monotonic", side_effect=lambda: clock[0]), \
+                patch.object(f.time, "sleep", side_effect=lambda seconds: clock.__setitem__(0, clock[0] + seconds)), \
+                patch.object(p, "http_json", side_effect=market_response) as get:
+            fetcher = f.MarketFetcher()
+            for symbol in p.SYMBOLS:
+                actions, errors, diag = f.corrected_fetch_corporate_actions(
+                    symbol, "2023-06-01", "2026-10-28", fetcher)
+                self.assertFalse(errors)
+                self.assertEqual(len(actions), 1)
+                self.assertEqual(diag["source_success_windows"],
+                                 {"EX_RIGHT_DIVIDEND": 7, "CAPITAL_REDUCTION": 4})
+                self.assertFalse(diag["circuit_open"])
+            self.assertEqual(get.call_count, 22)
+            self.assertGreater(clock[0], 90)
+            self.assertLessEqual(clock[0], f.FETCH_BUDGET_SECONDS)
+            self.assertEqual(len(diag["http_attempts_sample"]), get.call_count)
+            self.assertEqual(diag["http_attempts_sample"][0]["outcome"], "SOURCE_NETWORK_ERROR")
+            self.assertIn("PASS", {a["outcome"] for a in diag["http_attempts_sample"]})
+
+    def test_expired_budget_reuses_only_previously_fetched_same_run_tables(self):
+        clock = [0.0]
+        good = "https://www.twse.com.tw/already-fetched"
+        missing = "https://www.twse.com.tw/not-fetched"
+        with patch.object(f.time, "monotonic", side_effect=lambda: clock[0]), \
+                patch.object(p, "http_json", return_value=PAYLOAD) as get:
+            fetcher = f.MarketFetcher()
+            self.assertEqual(fetcher.get(good), PAYLOAD)
+            clock[0] = f.FETCH_BUDGET_SECONDS + 1
+            with self.assertRaisesRegex(p.SourceFetchError, "SOURCE_FETCH_BUDGET_EXHAUSTED"):
+                fetcher.get(missing)
+            self.assertEqual(fetcher.get(good), PAYLOAD)
+            with self.assertRaises(p.SourceFetchError) as caught:
+                fetcher.get(missing + "-other")
+            self.assertEqual(caught.exception.details["url"], missing + "-other")
+            self.assertEqual(get.call_count, 1)
+
+    def test_access_or_rate_denial_still_blocks_previously_cached_tables(self):
+        for category in ("SOURCE_ACCESS_DENIED", "SOURCE_RATE_LIMITED"):
+            with self.subTest(category=category), patch.object(p, "http_json", side_effect=[
+                    PAYLOAD, p.SourceFetchError(category, "https://www.twse.com.tw/denied")]) as get:
+                fetcher = f.MarketFetcher()
+                fetcher.get("https://www.twse.com.tw/good")
+                for url in ("https://www.twse.com.tw/denied", "https://www.twse.com.tw/good"):
+                    with self.assertRaises(p.SourceFetchError) as caught:
+                        fetcher.get(url)
+                    self.assertEqual(caught.exception.category, category)
+                self.assertEqual(get.call_count, 2)
+
+    def test_late_success_cannot_be_cached_or_promoted_after_budget(self):
+        clock = [0.0]
+        def late_response(url, **kwargs):
+            clock[0] = f.FETCH_BUDGET_SECONDS + 1
+            return PAYLOAD
+        with patch.object(f.time, "monotonic", side_effect=lambda: clock[0]), \
+                patch.object(p, "http_json", side_effect=late_response) as get:
+            fetcher = f.MarketFetcher()
+            for url in ("https://www.twse.com.tw/late", "https://www.twse.com.tw/next"):
+                with self.assertRaisesRegex(p.SourceFetchError, "SOURCE_FETCH_BUDGET_EXHAUSTED"):
+                    fetcher.get(url)
+            self.assertFalse(fetcher.cache)
+            self.assertEqual(get.call_count, 1)
+            self.assertEqual(fetcher.attempt_log[0]["outcome"], "SOURCE_FETCH_BUDGET_EXHAUSTED")
 
     def test_history_metadata_is_not_partially_promoted_when_second_symbol_fails(self):
         last = date(2026, 10, 27)
@@ -387,5 +484,6 @@ class CorporateActionTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
 
 
